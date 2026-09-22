@@ -880,6 +880,14 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_cabinet_motion
+            COMMAND devils_crush
+                --cabinet-motion-check "${CMAKE_CURRENT_BINARY_DIR}/cabinet-motion"
+                --rom "${DC_ROM_PATH}"
+        )
+        set_tests_properties(dc_rom_cabinet_motion PROPERTIES LABELS rom_required)
+
+        add_test(
             NAME dc_rom_bonus_launch_smoke
             COMMAND
                 devils_crush

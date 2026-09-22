@@ -4,6 +4,7 @@
 
 #include "devils_crush/cabinet/cabinet_state.hpp"
 #include "devils_crush/render/pce_background.hpp"
+#include "devils_crush/render/table_motion.hpp"
 
 #include <array>
 #include <cstddef>
@@ -210,7 +211,8 @@ public:
         int framebuffer_playfield_y = 30,
         int framebuffer_playfield_height = 208,
         std::span<const std::uint8_t> background_opaque = {},
-        std::span<const std::byte> rom_bytes = {});
+        std::span<const std::byte> rom_bytes = {},
+        TableMotionFrame* motion_frame = nullptr);
 
 private:
     struct CachedSprite {

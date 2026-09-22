@@ -1003,7 +1003,8 @@ PersistentActorSpriteCache::update_and_composite(
     const int framebuffer_playfield_y,
     const int framebuffer_playfield_height,
     const std::span<const std::uint8_t> background_opaque,
-    const std::span<const std::byte> rom_bytes)
+    const std::span<const std::byte> rom_bytes,
+    TableMotionFrame* const motion_frame)
 {
     const auto actors =
         devils_crush::cabinet::decode_table_actor_state(work_ram);
@@ -1778,6 +1779,27 @@ PersistentActorSpriteCache::update_and_composite(
                 sprite.sat_index,
             };
         });
+
+    if (motion_frame != nullptr) {
+        motion_frame->sprites.clear();
+        for (auto it = world_sprites.rbegin(); it != world_sprites.rend(); ++it) {
+            const auto& sprite = *it;
+            if (sprite.palette_indices == nullptr) continue;
+            TableMotionSprite draw;
+            draw.actor = (*actors)[sprite.actor_slot];
+            draw.x = sprite.world_x;
+            draw.y = sprite.world_y - destination_world_y;
+            draw.foreground = (sprite.flags & 0x0080U) != 0U;
+            draw.image = {sprite.width, sprite.height, {}};
+            draw.image.pixels.reserve(sprite.palette_indices->size());
+            for (const auto index : *sprite.palette_indices) {
+                draw.image.pixels.push_back(index != 0U
+                    && index < snapshot.palette_entries.size()
+                    ? decode_pce_color(snapshot.palette_entries[index]) : 0U);
+            }
+            motion_frame->sprites.push_back(std::move(draw));
+        }
+    }
 
     struct WorldSlice {
         std::size_t sprite_index = 0;

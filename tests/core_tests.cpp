@@ -11461,6 +11461,61 @@ void test_text_tile_write()
         "video update gate preserves both active renderer paths");
 }
 
+void test_table_motion()
+{
+    using devils_crush::render::table_motion_offset;
+    using devils_crush::render::table_motion_correction;
+    devils_crush::cabinet::TableActorState old{
+        .slot = 0, .type = 1, .appearance = 2, .world_x = 100, .world_y = 200};
+    auto now = old;
+    now.world_x += 3;
+    now.world_y -= 2;
+    check(table_motion_offset(now, &old, 0.25F) == std::pair{-2.25F, 1.5F},
+        "table motion retains fractional positions on both axes");
+    check(table_motion_offset(now, &old, 1.0F) == std::pair{0.0F, 0.0F},
+        "table motion arrives at the current actor position");
+    now.dispatch = 0x1234;
+    check(table_motion_offset(now, &old, 0.5F).first == -1.5F,
+        "normal coroutine changes do not interrupt motion");
+    check(table_motion_offset(now, nullptr, 0.0F) == std::pair{0.0F, 0.0F},
+        "new actors appear at their actual position");
+    now.world_x += 40;
+    check(table_motion_offset(now, &old, 0.5F) == std::pair{0.0F, 0.0F},
+        "teleports do not slide across the table");
+    now = old;
+    now.world_x += 1;
+    now.type = 3;
+    check(table_motion_offset(now, &old, 0.5F) == std::pair{0.0F, 0.0F},
+        "reused actor slots do not inherit their predecessor's motion");
+
+    auto older = old;
+    old.world_x = 102;
+    now = old;
+    now.world_x = 103;
+    const auto short_step = table_motion_correction(now, &old, &older);
+    check(short_step == std::pair{0.25F, 0.0F},
+        "uneven pixel steps receive a quarter-pixel correction");
+    auto next = now;
+    next.world_x = 105;
+    const auto long_step = table_motion_correction(next, &now, &old);
+    check(next.world_x + long_step.first - (now.world_x + short_step.first) == 1.5F,
+        "alternating two/one-pixel steps become even 1.5-pixel motion");
+    now.world_x = 104;
+    check(table_motion_correction(now, &old, &older) == std::pair{0.0F, 0.0F},
+        "constant velocity acquires no filter delay");
+    now.world_x = 101;
+    check(table_motion_correction(now, &old, &older) == std::pair{0.0F, 0.0F},
+        "a collision reversal bypasses the step correction");
+    now.world_x = 109;
+    check(table_motion_correction(now, &old, &older) == std::pair{0.0F, 0.0F},
+        "sharp acceleration bypasses the step correction");
+    now.world_x = 102;
+    check(table_motion_correction(now, &old, &older).first == 0.5F,
+        "the ball's small-stop correction is bounded to half a source pixel");
+    check(table_motion_correction(now, &old, nullptr) == std::pair{0.0F, 0.0F},
+        "new motion history starts without a correction");
+}
+
 void test_dmd_attract_transition()
 {
     using devils_crush::cabinet::DmdPanel;
@@ -21774,6 +21829,7 @@ int main()
     test_text_tile_write();
     test_dmd_text_layout();
     test_dmd_attract_transition();
+    test_table_motion();
     test_table_palette_cache();
     test_native_registry();
     test_native_game_state_view();

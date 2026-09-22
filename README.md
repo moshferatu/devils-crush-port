@@ -46,6 +46,7 @@ devils-crush.exe --bonus-stage 3 --rom "D:\path\to\Devil's Crush.pce"
 | Key | |
 | --- | --- |
 | F5 / F9 | Save and restore a quick state |
+| F6 | Toggle playfield motion/artwork smoothing on high-refresh displays |
 | F10 | Reload `portable-data/gamecontrollerdb.txt` after editing it |
 | F11 | Toggle playfield borderless fullscreen |
 | F12 | Open cabinet display assignment |

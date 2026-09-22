@@ -24,6 +24,63 @@ frames, then exits. The ROM-enabled CTest runs this through SDL's dummy video
 and audio drivers so window ownership and fallback rendering remain covered
 without an interactive desktop.
 
+## Motion smoothing
+
+On displays above 63 Hz, the playfield automatically draws intermediate
+pictures at the display refresh rate. F6 toggles smoothing for the
+current run. VSync must be available; 60 Hz displays keep the original pictures.
+After five seconds, and after each F6 toggle, a short sample reports
+completed presents per second, game frames per second, extra interpolated
+presents between game frames, and the longest presentation gap. An "active"
+configuration alone does not establish the delivered cadence.
+The game's simulation, input sampling, audio, collision timing and capture
+replays still run at the original 59.8261 Hz.
+
+Like the Zombies Ate My Neighbors port's layered renderer, this uses separate
+sprite artwork and actor positions. Pieces of an actor share one motion offset.
+Previous and current artwork are aligned to that same interpolated position,
+then the two complete compositions are blended. This smooths flipper poses,
+rotating artwork, giant-face transformations, flashes and palette effects
+without giving moving actors a second trailing position. Rendering into a target at least four times
+the original resolution preserves fractional-pixel motion. Sprite order,
+transparency and the table's background-priority mask remain intact.
+
+The position filter also follows the Zombies port's treatment of uneven pixel
+steps: `shown(t) = (3*p(t) + 2*p(t-1) - p(t-2))/4`. Steady motion stays on its
+original path; alternating two/one-pixel steps become steady 1.5-pixel steps.
+Corrections are capped at half a source pixel for the ball and one pixel for
+other actors. Direction reversals, sharp acceleration, missing history and
+teleports bypass the correction. A small stop can have that bounded visual
+overshoot for one tick; no game coordinates are changed.
+
+Interpolation adds up to one game frame (about 17 ms) of visual delay. F6 is
+available for comparing the feel, especially when timing flippers. Animation
+artwork transitions use a short crossfade, not generated geometric rotation
+frames. Fast pose changes can therefore look briefly softer. Teleports, newly visible
+actors, scene changes, quick-state restores and DMD-owned playfield holds clear
+or bypass motion history. Bonus stages, title/high-score screens and the base
+single-window emulated framebuffer blend consecutive complete pictures. These
+screens do not expose the stitched renderer's separate actors, so fast movement
+can show a brief double edge. Screen-selector and geometry changes discard old
+pictures, preserving scene cuts and the cabinet's existing bonus-entry hold.
+DMD and backglass rendering are unchanged.
+
+`--cabinet-motion-check <directory>` runs the scripted gameplay route through
+the SDL software renderer. It checks exact 4x endpoint pictures against the
+existing compositor with step correction disabled, verifies distinct fractional
+pictures without modifying gameplay RAM, and saves comparison BMPs. Synthetic
+readback checks cover palette midpoints, changing silhouettes, overlapping
+pieces, background priority, appearance changes, teleports and scene cuts.
+The same check also verifies exact endpoints and distinct blended pictures on
+the title screen and in all six bonus stages.
+`--cabinet-motion-gpu-check <directory>` runs the same readback checks using the
+actual graphics renderer in a hidden window.
+
+`--cabinet-presentation-check` uses the actual host, native registry, display
+settings, DMD and backglass for 1,920 scripted game frames. It switches smoothing
+on/off/on and reports the measured cadence of each segment. Display settings
+are read but are not saved by this bounded diagnostic.
+
 ## Playfield switching
 
 Frontend screens use the emulated 256-by-240 framebuffer at corrected 4:3

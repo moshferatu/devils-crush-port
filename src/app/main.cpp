@@ -566,6 +566,9 @@ struct CommandLine {
     bool verify_side_gate_deadline_check = false;
     bool high_score_check = false;
     std::filesystem::path cabinet_view_probe_directory;
+    std::filesystem::path cabinet_motion_check_directory;
+    bool cabinet_motion_gpu_check = false;
+    bool cabinet_presentation_check = false;
     bool cabinet_seed_check = false;
     bool cabinet_palette_check = false;
     bool cabinet_attribute_check = false;
@@ -4556,6 +4559,9 @@ parse_logical_address_range(const std::string_view text)
             options.smoke_test = true;
         } else if (argument == "--cabinet-smoke-test") {
             options.cabinet_smoke_test = true;
+        } else if (argument == "--cabinet-presentation-check") {
+            options.cabinet_smoke_test = true;
+            options.cabinet_presentation_check = true;
         } else if (argument == "--cabinet") {
             options.cabinet = true;
         } else if (argument == "--bonus-stage") {
@@ -5218,6 +5224,13 @@ parse_logical_address_range(const std::string_view text)
                 return options;
             }
             options.cabinet_view_probe_directory = argv[++index];
+        } else if (argument == "--cabinet-motion-check" || argument == "--cabinet-motion-gpu-check") {
+            if (index + 1 >= argc) {
+                options.error = "--cabinet-motion-check requires a directory.";
+                return options;
+            }
+            options.cabinet_motion_check_directory = argv[++index];
+            options.cabinet_motion_gpu_check = argument == "--cabinet-motion-gpu-check";
         } else if (argument == "--cabinet-seed-check") {
             options.cabinet_seed_check = true;
         } else if (argument == "--cabinet-palette-check") {
@@ -9676,6 +9689,10 @@ void print_usage()
         << "  devils-crush --high-score-check [--rom <path>]\n"
         << "  devils-crush --cabinet-view-probe <directory> "
            "[--rom <path>]\n"
+        << "  devils-crush --cabinet-motion-check <directory> "
+           "[--rom <path>]\n"
+        << "  devils-crush --cabinet-motion-gpu-check <directory> [--rom <path>]\n"
+        << "  devils-crush --cabinet-presentation-check [--rom <path>]\n"
         << "  devils-crush --cabinet-plunger-probe\n"
         << "  devils-crush --cabinet-plunger-check [--rom <path>]\n"
         << "  devils-crush --help\n\n"
@@ -10186,6 +10203,8 @@ void destroy_source(SourceTexture& source)
     return true;
 }
 
+#include "table_motion_sdl.hpp"
+
 struct StageTexture {
     SDL_Texture* texture = nullptr;
     int width = 0;
@@ -10238,7 +10257,10 @@ void destroy_stage(StageTexture& stage)
     const std::uint32_t aspect_denominator,
     const std::array<std::uint8_t, 3> clear_color = {8U, 8U, 12U},
     const float margin_fraction = 0.0F,
-    const bool bottom_table_width = false)
+    const bool bottom_table_width = false,
+    TableMotionPresenter* motion = nullptr,
+    const float motion_alpha = 1.0F,
+    const FrameArtworkPresenter* artwork = nullptr)
 {
     int output_width = 0;
     int output_height = 0;
@@ -10295,6 +10317,12 @@ void destroy_stage(StageTexture& stage)
         layout.destination.x = (output_width - layout.destination.width) / 2;
         layout.destination.y = output_height - layout.destination.height;
     }
+    if (motion != nullptr) {
+        // Intermediate motion must survive the nearest pass at subpixel
+        // resolution, including when the window itself is relatively small.
+        layout.stage_width = std::max(layout.stage_width, source.width * 4);
+        layout.stage_height = std::max(layout.stage_height, source.height * 4);
+    }
     if (!layout.valid() || !ensure_stage(renderer, layout, stage)) {
         return false;
     }
@@ -10308,6 +10336,15 @@ void destroy_stage(StageTexture& stage)
     }
     if (!SDL_RenderTexture(renderer, source.texture, nullptr, nullptr)) {
         return report_sdl_error("SDL_RenderTexture (nearest pass) failed");
+    }
+    if (motion != nullptr
+        && !motion->draw(renderer, stage.width, stage.height, motion_alpha)) {
+        SDL_SetRenderTarget(renderer, nullptr);
+        return report_sdl_error("Table motion rendering failed");
+    }
+    if (artwork != nullptr && !artwork->draw(renderer, motion_alpha)) {
+        SDL_SetRenderTarget(renderer, nullptr);
+        return report_sdl_error("Frame artwork rendering failed");
     }
     if (!SDL_SetRenderTarget(renderer, nullptr)) {
         return report_sdl_error("SDL_SetRenderTarget (window) failed");
@@ -11014,7 +11051,8 @@ decode_cabinet_table(
     const bool report_overlay_stats,
     SeededActorTracker* const seeded_actors,
     devils_crush::render::PersistentActorOverlayStats* const out_stats =
-        nullptr)
+        nullptr,
+    devils_crush::render::TableMotionFrame* const motion_frame = nullptr)
 {
     constexpr std::size_t table_width_tiles = 32U;
     constexpr std::size_t table_height_tiles = 96U;
@@ -11109,6 +11147,10 @@ decode_cabinet_table(
         return table;
     }
 
+    if (motion_frame != nullptr) {
+        motion_frame->background = *table;
+        motion_frame->sprites.clear();
+    }
     if (layers == CabinetLayers::all
         || layers == CabinetLayers::retained_only) {
     const auto overlay_stats =
@@ -11127,7 +11169,8 @@ decode_cabinet_table(
             30,
             208,
             table->opaque_pixels,
-            rom_bytes);
+            rom_bytes,
+            motion_frame);
     // A retained actor whose current phase has no ROM-owned artwork either
     // freezes on its last learned image or drops out entirely. Both read as
     // an actor that stops animating off-camera and then snaps when the live
@@ -20286,7 +20329,8 @@ int run_windows_host(
     const bool overlay_stats = false,
     const std::filesystem::path& capture_session_directory = {},
     const bool native_gameplay_bootstrap_shadow = false,
-    const double nudge_multiplier = 1.0)
+    const double nudge_multiplier = 1.0,
+    const bool presentation_check = false)
 {
     // Joystick as well as gamepad: the plunger is an anonymous HID axis that
     // SDL's gamepad database has no mapping for, so it is only visible through
@@ -20322,7 +20366,7 @@ int run_windows_host(
     devils_crush::cabinet::DisplayConfig cabinet_config;
     const bool persist_cabinet_config =
         cabinet_mode && frame_limit <= 0;
-    if (persist_cabinet_config) {
+    if (persist_cabinet_config || presentation_check) {
         const auto loaded =
             devils_crush::cabinet::load_display_config(
                 kCabinetConfigPath);
@@ -20462,6 +20506,12 @@ int run_windows_host(
     bool table_view = false;
     bool bonus_view = false;
     bool reported_table_view = false;
+    TableMotionPresenter table_motion;
+    FrameArtworkPresenter frame_artwork;
+    bool smoothing_enabled = true;
+    bool motion_ready = false;
+    std::optional<bool> reported_smoothing;
+    TablePresentationSample presentation_sample;
     devils_crush::render::PersistentActorSpriteCache
         persistent_actor_sprites;
     devils_crush::render::TablePaletteCache table_palette_cache;
@@ -20927,9 +20977,30 @@ int run_windows_host(
                      "disabled while capturing.\n";
     }
     while (running && host_ok) {
+        if (presentation_check && ((emulated_frames >= 1200 && emulated_frames < 1560)
+                ? smoothing_enabled : !smoothing_enabled)) {
+            presentation_sample.report(smoothing_enabled);
+            presentation_sample = {};
+            smoothing_enabled = !smoothing_enabled;
+            table_motion.reset();
+            frame_artwork.reset();
+            motion_ready = false;
+        }
         claim_startup_focus(window, focus_claim);
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat
+                && event.key.key == SDLK_F6) {
+                presentation_sample.report(smoothing_enabled);
+                presentation_sample = {};
+                smoothing_enabled = !smoothing_enabled;
+                table_motion.reset();
+                frame_artwork.reset();
+                motion_ready = false;
+                std::cout << "Playfield smoothing: "
+                          << (smoothing_enabled ? "on" : "off")
+                          << " (motion and artwork on high-refresh displays)\n";
+            }
             if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
                 nudge.model.rearm();
             }
@@ -21071,6 +21142,9 @@ int run_windows_host(
                     std::cerr << "Quick-state restore is disabled during "
                                  "interactive capture.\n";
                 } else if (load_quick_state(runtime, kQuickStatePath)) {
+                    table_motion.reset();
+                    frame_artwork.reset();
+                    motion_ready = false;
                     nudge.model.rearm();
                     if (audio.stream != nullptr
                         && !SDL_ClearAudioStream(audio.stream)) {
@@ -21125,6 +21199,9 @@ int run_windows_host(
                 if (event.render.windowID == SDL_GetWindowID(window)) {
                     destroy_stage(stage);
                     destroy_source(source);
+                    table_motion.reset();
+                    frame_artwork.reset();
+                    motion_ready = false;
                     next_frame_time = Clock::now();
                 } else if (
                     backglass.window != nullptr
@@ -21137,6 +21214,22 @@ int run_windows_host(
         }
 
         const auto* focused_window = SDL_GetKeyboardFocus();
+        const auto* refresh_mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window));
+        const bool smooth_table = smoothing_enabled && vsync_enabled
+            && layers == CabinetLayers::all && !assignment_active
+            && refresh_mode != nullptr
+            && refresh_mode->refresh_rate > kEmulationFramesPerSecond * 1.05;
+        if (!reported_smoothing || *reported_smoothing != smooth_table) {
+            reported_smoothing = smooth_table;
+            std::cout << "Playfield smoothing: " << (smooth_table ? "active" : "inactive")
+                      << "; display " << (refresh_mode ? refresh_mode->refresh_rate : 0.0F)
+                      << " Hz (F6 toggles; requires high refresh and VSync).\n";
+        }
+        if (!smooth_table) {
+            table_motion.reset();
+            frame_artwork.reset();
+            motion_ready = false;
+        }
         const bool nudge_focused = focused_window != nullptr
             && (focused_window == window || focused_window == dmd.window
                 || focused_window == backglass.window);
@@ -21172,6 +21265,8 @@ int run_windows_host(
                 ball_in_launcher,
                 cabinet_config.input.flippers,
                 rod_engaged && !rod.released);
+            if (presentation_check)
+                input = state_census_input_for_frame(emulated_frames + 1);
             if (cabinet_mode && nudge.read(nudge_focused
                     && devils_crush::input::nudge_play_active(runtime.export_work_ram()))) {
                 input.player_one |= static_cast<std::uint16_t>(Button::two);
@@ -21209,6 +21304,11 @@ int run_windows_host(
             if (!cabinet_mode) {
                 host_ok =
                     consume_emulated_frame(renderer, frame, source, audio);
+                if (host_ok && smooth_table) {
+                    const auto state = devils_crush::cabinet::decode_cabinet_state(runtime.export_work_ram());
+                    host_ok = frame_artwork.update(renderer, frame.framebuffer,
+                        state ? state->screen_selector + (state->bonus_stage ? 256 : 0) : 0);
+                }
             } else if (
                 frame.frame_number == 0U
                 || frame.framebuffer.pixels.empty()) {
@@ -21247,6 +21347,11 @@ int run_windows_host(
                 const bool hold_playfield = source.texture != nullptr
                     && (hold_bonus_entry || (dmd.renderer != nullptr && dmd_font
                         && dmd_panel.holds_playfield()));
+                if (hold_playfield) {
+                    table_motion.reset();
+                    frame_artwork.reset();
+                    motion_ready = false;
+                }
                 if (!hold_playfield) {
                     bonus_view = cabinet_state && cabinet_state->bonus_stage;
                     table_view = false;
@@ -21259,6 +21364,7 @@ int run_windows_host(
                             == devils_crush::cabinet::PlayfieldView::
                                 table_background) {
                         const auto video = runtime.export_video_memory();
+                        devils_crush::render::TableMotionFrame motion_frame;
                         const auto table =
                             video
                             ? decode_cabinet_table(
@@ -21269,7 +21375,8 @@ int run_windows_host(
                                   table_palette_cache,
                                   layers,
                                   overlay_stats_due,
-                                  overlay_stats ? &seeded_actors : nullptr)
+                                  overlay_stats ? &seeded_actors : nullptr,
+                                  nullptr, smooth_table ? &motion_frame : nullptr)
                             : std::nullopt;
                         if (table && playfield_dump_remaining > 0) {
                             --playfield_dump_remaining;
@@ -21285,6 +21392,15 @@ int run_windows_host(
                             }
                         }
                         if (table) {
+                            frame_artwork.reset();
+                            if (smooth_table) {
+                                motion_ready = table_motion.update(renderer, std::move(motion_frame));
+                                if (!motion_ready) {
+                                    smoothing_enabled = false;
+                                    table_motion.reset();
+                                    std::cerr << "Table smoothing unavailable: " << SDL_GetError() << '\n';
+                                }
+                            }
                             host_ok =
                                 upload_image(
                                     renderer,
@@ -21295,12 +21411,20 @@ int run_windows_host(
                         }
                     }
                     if (host_ok && !source_uploaded) {
+                        table_motion.reset();
+                        motion_ready = false;
                         persistent_actor_sprites.reset();
                         table_palette_cache.reset();
                         host_ok = upload_framebuffer(
                             renderer,
                             frame.framebuffer,
                             source);
+                        if (host_ok && smooth_table) {
+                            const int scene = cabinet_state
+                                ? cabinet_state->screen_selector + (cabinet_state->bonus_stage ? 256 : 0)
+                                : (work_ram.size() > 0x54 ? std::to_integer<int>(work_ram[0x54]) : 0);
+                            host_ok = frame_artwork.update(renderer, frame.framebuffer, scene);
+                        }
                     }
                 } // Retain it during bonus entry and DMD-owned result screens.
                 // The stitched table and the emulated framebuffer behave
@@ -21354,6 +21478,11 @@ int run_windows_host(
                     table_view
                     ? devils_crush::cabinet::kTableAspectDenominator
                     : kDisplayAspectDenominator;
+                const bool interpolate = smooth_table && table_view && motion_ready;
+                const bool blend_frame = smooth_table && !table_view && frame_artwork.current.texture;
+                const auto motion_alpha = std::clamp(static_cast<float>(
+                    std::chrono::duration<double>(Clock::now() - next_frame_time + frame_period).count()
+                    / std::chrono::duration<double>(frame_period).count()), 0.0F, 1.0F);
                 host_ok = present_frame(
                     renderer,
                     source,
@@ -21362,7 +21491,17 @@ int run_windows_host(
                     aspect_denominator,
                     cabinet_mode ? kPureBlack : kDesktopFrameColor,
                     0.0F,
-                    cabinet_mode && bonus_view && !table_view);
+                    cabinet_mode && bonus_view && !table_view,
+                    interpolate ? &table_motion : nullptr, motion_alpha,
+                    blend_frame ? &frame_artwork : nullptr);
+                if (host_ok && (table_view || blend_frame)) {
+                    presentation_sample.observe(emulated_frames,
+                        (interpolate || blend_frame) && motion_alpha < 1.0F, Clock::now());
+                    if (Clock::now() - presentation_sample.start >= std::chrono::seconds(5))
+                        presentation_sample.report(smoothing_enabled);
+                } else {
+                    presentation_sample = {};
+                }
             }
         }
         const auto dmd_high_score_elapsed =
@@ -21442,6 +21581,7 @@ int run_windows_host(
         }
     }
 
+    presentation_sample.report(smoothing_enabled);
     // Before the hooks go, so a table that changed inside the last second of
     // the session is still written.
     flush_high_scores(high_scores);
@@ -21450,6 +21590,8 @@ int run_windows_host(
     runtime.clear_execution_hooks();
     runtime.clear_work_ram_write_observer();
     destroy_audio(audio);
+    table_motion.reset();
+    frame_artwork.reset();
     destroy_stage(stage);
     destroy_source(source);
     destroy_stage(backglass_logo_stage);
@@ -22751,6 +22893,132 @@ enum class ViewProbeRoute {
         input.player_one = static_cast<std::uint16_t>(Button::select);
     }
     return input;
+}
+
+#include "artwork_blend_checks.hpp"
+
+[[nodiscard]] int run_cabinet_motion_check(
+    devils_crush::emulation::PceRuntime& runtime,
+    const std::filesystem::path& rom_path,
+    const std::filesystem::path& directory,
+    const bool gpu)
+{
+    const auto rom = read_rom_bytes(rom_path);
+    if (!rom) return EXIT_FAILURE;
+    std::filesystem::create_directories(directory);
+    constexpr int w = devils_crush::cabinet::kTableWorldWidth;
+    constexpr int h = devils_crush::cabinet::kTableWorldHeight;
+    SDL_Surface* surface = SDL_CreateSurface(w * 4, h * 4, SDL_PIXELFORMAT_ARGB8888);
+    SDL_Window* window = gpu && SDL_Init(SDL_INIT_VIDEO)
+        ? SDL_CreateWindow("Motion GPU check", w * 4, h * 4, SDL_WINDOW_HIDDEN) : nullptr;
+    SDL_Renderer* renderer = gpu ? (window ? SDL_CreateRenderer(window, nullptr) : nullptr)
+        : (surface ? SDL_CreateSoftwareRenderer(surface) : nullptr);
+    if (!renderer) {
+        SDL_DestroySurface(surface);
+        SDL_DestroyWindow(window);
+        report_sdl_error("Motion check renderer failed");
+        return EXIT_FAILURE;
+    }
+    SDL_Texture* target = gpu ? SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+        SDL_TEXTUREACCESS_TARGET, w * 4, h * 4) : nullptr;
+    if (gpu && (!target || !SDL_SetRenderTarget(renderer, target))) {
+        SDL_DestroyTexture(target);
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_DestroySurface(surface);
+        return EXIT_FAILURE;
+    }
+    std::cout << "Motion check renderer: " << SDL_GetRendererName(renderer) << '\n';
+    TableMotionPresenter presenter;
+    const auto draw = [&](float alpha, bool even = true) {
+        if (!presenter.draw(renderer, w * 4, h * 4, alpha, even) || !SDL_FlushRenderer(renderer)) return false;
+        if (!gpu) return true;
+        auto* readback = SDL_RenderReadPixels(renderer, nullptr);
+        auto* converted = readback ? SDL_ConvertSurface(readback, SDL_PIXELFORMAT_ARGB8888) : nullptr;
+        SDL_DestroySurface(readback);
+        if (!converted) return false;
+        SDL_DestroySurface(surface);
+        surface = converted;
+        return true;
+    };
+    devils_crush::render::PersistentActorSpriteCache actors;
+    devils_crush::render::TablePaletteCache palette;
+    runtime.reset();
+    int checked = 0;
+    int moving = 0;
+    int moving_ball_frames = 0;
+    int interpolated_ball_frames = 0;
+    bool ok = check_artwork_blending(renderer);
+    for (int tick = 1; tick <= 2100 && ok; ++tick) {
+        keep_fixed_actors_simulating(runtime);
+        static_cast<void>(runtime.run_frame(state_census_input_for_frame(tick)));
+        const auto ram = runtime.export_work_ram();
+        const auto state = devils_crush::cabinet::decode_cabinet_state(ram);
+        const auto video = runtime.export_video_memory();
+        if (!state || !video || state->playfield
+            != devils_crush::cabinet::PlayfieldView::table_background) {
+            presenter.reset();
+            continue;
+        }
+        devils_crush::render::TableMotionFrame motion;
+        const auto table = decode_cabinet_table(*rom, ram, *video, actors, palette,
+            CabinetLayers::all, false, nullptr, nullptr, &motion);
+        if (!table || !presenter.update(renderer, std::move(motion))) { ok = false; break; }
+        const auto ball = std::ranges::find_if(presenter.frame.sprites, [](const auto& sprite) {
+            return sprite.actor.slot == devils_crush::cabinet::kBallActorSlot;
+        });
+        if (ball != presenter.frame.sprites.end()) {
+            const auto& prior = presenter.previous[ball->actor.slot];
+            if (prior && (prior->world_x != ball->actor.world_x || prior->world_y != ball->actor.world_y)) {
+                ++moving_ball_frames;
+                const auto offset = devils_crush::render::table_motion_offset(ball->actor, &*prior, 0.25F);
+                if (offset != std::pair{0.0F, 0.0F}) ++interpolated_ball_frames;
+            }
+        }
+        if (tick % 17 != 0) continue;
+        ok = draw(1.0F, false);
+        if (!ok) break;
+        // At the endpoint each original pixel must be an exact 4x4 block.
+        for (int y = 0; y < h * 4 && ok; ++y) {
+            const auto* row = reinterpret_cast<const std::uint32_t*>(
+                static_cast<const std::byte*>(surface->pixels) + y * surface->pitch);
+            for (int x = 0; x < w * 4; ++x) {
+                if (row[x] != table->image.pixels[(y / 4) * w + x / 4]) {
+                    std::cerr << "Motion endpoint mismatch at tick " << tick
+                              << " pixel " << x << ',' << y << '\n';
+                    ok = false;
+                    break;
+                }
+            }
+        }
+        if (!ok) break;
+        ++checked;
+        std::vector<std::byte> endpoint(static_cast<std::size_t>(surface->pitch) * surface->h);
+        std::memcpy(endpoint.data(), surface->pixels, endpoint.size());
+        ok = draw(0.25F);
+        if (!ok) break;
+        if (std::memcmp(endpoint.data(), surface->pixels, endpoint.size()) != 0) {
+            ++moving;
+            if (moving == 10) {
+                ok = SDL_SaveBMP(surface, (directory / "quarter-frame.bmp").string().c_str());
+                if (ok) ok = draw(1.0F)
+                    && SDL_SaveBMP(surface, (directory / "current-frame.bmp").string().c_str());
+            }
+        }
+        if (runtime.export_work_ram() != ram) ok = false;
+    }
+    presenter.reset();
+    if (ok) ok = check_viewport_artwork(renderer, runtime, directory);
+    SDL_SetRenderTarget(renderer, nullptr);
+    SDL_DestroyTexture(target);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_DestroySurface(surface);
+    std::cout << "Table motion: " << checked << " exact 4x endpoint frames; "
+              << moving << " distinct quarter-frame pictures; gameplay RAM unchanged.\n";
+    std::cout << "Ball interpolation: " << interpolated_ball_frames << " of "
+              << moving_ball_frames << " moving ball frames (cuts excluded).\n";
+    return ok && checked > 0 && moving > 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 // Reproduces what a cabinet shows when the picture is wrong, without
@@ -25349,6 +25617,10 @@ int main(const int argc, char* argv[])
                 options.rom_path,
                 options.cabinet_view_probe_directory);
         }
+        if (!options.cabinet_motion_check_directory.empty()) {
+            return run_cabinet_motion_check(*runtime, options.rom_path,
+                options.cabinet_motion_check_directory, options.cabinet_motion_gpu_check);
+        }
         if (options.cabinet_launch_check) {
             std::cout << "=== launch keys ===\n";
             if (run_launch_check(*runtime, Button::right, "Right")
@@ -26185,7 +26457,7 @@ int main(const int argc, char* argv[])
                 options.rom_path,
                 true,
                 options.bonus_stage,
-                options.bonus_stage != 0U
+                options.cabinet_presentation_check ? 1920 : options.bonus_stage != 0U
                     ? kBonusStageSmokeFrames
                     : kSmokeTestFrames,
                 host_registry,
@@ -26193,7 +26465,8 @@ int main(const int argc, char* argv[])
                 options.cabinet_overlay_stats,
                 options.capture_session_directory,
                 options.native_gameplay_bootstrap_shadow,
-                options.nudge_multiplier);
+                  options.nudge_multiplier,
+                  options.cabinet_presentation_check);
         }
 
         (void)load_backup_ram(*runtime, kBackupRamPath);
