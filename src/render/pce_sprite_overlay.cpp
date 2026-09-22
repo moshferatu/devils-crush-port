@@ -1773,8 +1773,20 @@ PersistentActorSpriteCache::update_and_composite(
     std::ranges::sort(
         world_sprites,
         {},
-        [](const WorldSprite& sprite) {
+        [&actors](const WorldSprite& sprite) {
+            // Cabinet presentation: the Side Stars otherwise cover the
+            // skeletal soldiers as they emerge. Draw this enemy family
+            // immediately in front of the middle portals, keeping the ball
+            // and flippers above it. This shared order also feeds smoothing.
+            const auto& actor = (*actors)[sprite.actor_slot];
+            const bool small_soldier = sprite.actor_slot
+                    >= devils_crush::cabinet::kFirstDynamicActorSlot
+                && actor.type == 0x82U && actor.appearance == 0x1AU;
             return std::tuple{
+                small_soldier
+                    ? devils_crush::cabinet::kFirstMiddleStarSlot
+                    : sprite.actor_slot,
+                !small_soldier,
                 sprite.actor_slot,
                 sprite.sat_index,
             };

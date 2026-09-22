@@ -9582,6 +9582,59 @@ void test_pce_sprite_overlay()
         check(draw_ball(720, 1) == 1U, "main-table drain cutoff does not apply to bonus stages");
         check(draw_ball(700, 0) == 1U, "ball reappears when reset for the next launch");
     }
+    {
+        // Learn separate portal, soldier and ball pixels, then overlap
+        // their retained artwork off camera to exercise cabinet layering.
+        auto layer_ram = work_ram;
+        auto layer_palette = palette;
+        auto layer_sat = sat;
+        std::fill(sat.begin(), sat.end(), std::uint16_t{0});
+        constexpr std::array<std::size_t, 3> slots{0x10U, 0x62U, 0x00U};
+        for (std::size_t i = 0; i < slots.size(); ++i) {
+            const auto slot = slots[i];
+            const auto x = static_cast<unsigned>(8U + 20U * i);
+            layer_ram[0x1000U + slot] = std::byte{0x82};
+            layer_ram[0x1080U + slot] = std::byte{0x80};
+            layer_ram[0x1180U + slot] = static_cast<std::byte>(x);
+            layer_ram[0x1300U + slot] = std::byte{20};
+            layer_ram[0x1900U + slot] = slot == 0x62U
+                ? std::byte{0x1A} : std::byte{3};
+            set_sprite(i, static_cast<int>(x), 20, 1U,
+                static_cast<std::uint16_t>(0x0081U + i));
+        }
+        layer_palette[256U + 17U] = 0x0007U;
+        layer_palette[256U + 33U] = 0x0038U;
+        layer_palette[256U + 49U] = 0x01C0U;
+        devils_crush::render::PersistentActorSpriteCache layer_cache;
+        ArgbImage layer_image{64, 128,
+            std::vector<std::uint32_t>(64U * 128U, 0xFF101010U)};
+        const auto learned = layer_cache.update_and_composite(layer_image,
+            PceSpriteSnapshot{vram, sat, layer_palette}, layer_ram, 0, 0, 0, 64);
+        for (const auto slot : slots) {
+            layer_ram[0x1080U + slot] = std::byte{0};
+            layer_ram[0x1180U + slot] = std::byte{20};
+        }
+        devils_crush::render::TableMotionFrame motion;
+        const auto ball = layer_cache.update_and_composite(layer_image,
+            PceSpriteSnapshot{vram, sat, layer_palette}, layer_ram,
+            64, 0, 0, 64, {}, {}, &motion);
+        check(ball && layer_image.pixels[20U * 64U + 20U]
+                    == devils_crush::render::decode_pce_color(0x01C0U),
+            "cabinet ball remains in front of skeletal soldiers");
+        check(motion.sprites.size() == 3U
+                && motion.sprites[0].actor.slot == 0x10U
+                && motion.sprites[1].actor.slot == 0x62U
+                && motion.sprites[2].actor.slot == 0x00U,
+            "smoothing receives the same portal, soldier, ball draw order");
+        layer_ram[0x1000U] = std::byte{0};
+        const auto soldiers = layer_cache.update_and_composite(layer_image,
+            PceSpriteSnapshot{vram, sat, layer_palette}, layer_ram, 64, 0, 0, 64);
+        check(learned && soldiers
+                && layer_image.pixels[20U * 64U + 20U]
+                    == devils_crush::render::decode_pce_color(0x0038U),
+            "cabinet skeletal soldier renders in front of its portal");
+        sat = std::move(layer_sat);
+    }
     constexpr std::size_t actor_slot = 0x17U;
     work_ram[0x1000U + actor_slot] = std::byte{0x82};
     work_ram[0x1080U + actor_slot] = std::byte{0x80};

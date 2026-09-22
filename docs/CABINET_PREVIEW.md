@@ -1087,6 +1087,11 @@ four-tick idle rotation running before and after a camera visit. The wall
 and Giant-Face controllers retain their existing behavior; portal contacts
 still drive the original entry, transformation, scoring, and ball-return logic.
 
+In the stitched cabinet view, skeletal Small Soldiers draw in front of the
+middle portals as they spawn, with the ball and flippers still above them.
+This presentation order applies with smoothing on or off; it does not change
+actor state, collisions, or the base emulated viewport.
+
 The cabinet freeze census reports first off-camera artwork and first camera
 visit for the pockets and skull targets, including static targets omitted
 from its animation ranking (artwork frame 0 means none observed). On the
