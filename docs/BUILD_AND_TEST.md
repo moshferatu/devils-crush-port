@@ -81,8 +81,8 @@ cmake `
   -P cmake/VerifyDistribution.cmake
 ```
 
-The verifier requires exactly `devils-crush.exe`, `LICENSE`, `README.md`, and
-`THIRD_PARTY_NOTICES.md`, and independently rejects the supported ROM hash.
+The verifier requires exactly `devils-crush.exe`, `devils-crush-launcher.exe`,
+`LICENSE`, `README.md`, and `THIRD_PARTY_NOTICES.md`, and independently rejects the supported ROM hash.
 CI performs this check for every Release build. This staging layout is not yet
 the final source-complete public package.
 

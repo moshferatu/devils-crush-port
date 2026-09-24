@@ -21,6 +21,31 @@ Currently, all other ROM files are unsupported.
 
 ROM files and locally derived assets are ignored by `git` and are not distributed with the project.
 
+## Launcher
+
+`devils-crush-launcher.exe` sits beside the game and is the easy way to set it
+up: `portable-data/cabinet.ini` a tab at a time, and a Play button that saves
+and starts the game, then comes back when the game closes.
+
+| Tab | |
+| --- | --- |
+| Game | The ROM, cabinet or desktop mode, a starting bonus stage, and native or emulated game code |
+| Video | Smoothing, and the cabinet's playfield rotation and which windows are fullscreen |
+| Audio | The music voice overlay |
+| Cabinet | The nudge board and nudge strength, and the analog plunger |
+| Keyboard | The keys for each PC Engine pad input, the launch keys, and each flipper's pad inputs |
+
+It is worked by mouse, keyboard or controller: Up and Down move, Left and
+Right change a value, Enter opens a list or waits for a key to bind, Tab (or L1
+and R1) turns the tabs, Ctrl+S saves, and Ctrl+Enter, F5 or Start plays. The
+ROM can also be chosen with Browse or dropped on the window.
+
+The launcher's icon and heading are the title screen's logo, decoded from the
+ROM at build time (`tools/make_launcher_art.cpp`), since nothing of the ROM's
+is kept in the repository. Without `Devil's Crush.pce` in the source folder,
+or `-DDC_LAUNCHER_ART_ROM=<path>`, it builds without an icon and with a text
+heading.
+
 ## Running
 
 On a desktop, in a window:
@@ -34,6 +59,12 @@ On a virtual pinball cabinet, across three screens (the default):
 ```powershell
 devils-crush.exe --rom "D:\path\to\Devil's Crush.pce"
 ```
+
+With no options the game plays as `portable-data/cabinet.ini` says, which is
+what the launcher edits: `game.rom`, `game.cabinet`, `game.bonus_stage`,
+`game.native`, `audio.music_voice_overlay`, `video.smoothing` and
+`input.nudge_multiplier`. An option on the command line beats the file for
+that run, and a file without them plays with the defaults below.
 
 Music voice overlay is also enabled by default during play. Add
 `--no-music-voice-overlay` to disable it. The existing `--cabinet` and
@@ -149,7 +180,7 @@ executable:
 | `devils-crush.sav` | The cartridge's backup RAM, including the five numbered save slots the game writes from its own save screen |
 | `devils-crush.hiscore` | The high-score table |
 | `devils-crush.state` | The F5/F9 quick state |
-| `cabinet.ini` | Display assignment, key bindings, and plunger calibration |
+| `cabinet.ini` | The launcher's settings, display assignment, key bindings, and plunger calibration |
 
 High scores save themselves. The cartridge only ever kept its table by spending
 one of five save slots on it by hand — pause, Select for High Scores, Button I,

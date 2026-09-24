@@ -15,6 +15,7 @@ set(
     "LICENSE"
     "README.md"
     "THIRD_PARTY_NOTICES.md"
+    "devils-crush-launcher.exe"
     "devils-crush.exe"
 )
 file(

@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cmath>
 #include <cctype>
 #include <fstream>
 #include <limits>
@@ -470,6 +471,88 @@ void append_bindings(std::string& output, const InputBindings& input)
         && parse_percent("release", input.plunger.calibration.release);
 }
 
+// The multiplier as the shortest text that reads back as the same double, so
+// a 2.5 typed in stays 2.5 rather than growing digits on every save.
+[[nodiscard]] bool append_play_settings(
+    std::string& output,
+    const PlaySettings& play)
+{
+    if (play.bonus_stage > 6U || !std::isfinite(play.nudge_multiplier)
+        || play.nudge_multiplier < 0.0 || play.nudge_multiplier > 16.0) {
+        return false;
+    }
+    std::array<char, 32> multiplier{};
+    const auto [end, error] = std::to_chars(
+        multiplier.data(),
+        multiplier.data() + multiplier.size(),
+        play.nudge_multiplier);
+    if (error != std::errc{}) {
+        return false;
+    }
+    output += "game.rom=" + escape_value(play.rom) + '\n';
+    output += "game.cabinet=" + std::to_string(play.cabinet ? 1 : 0) + '\n';
+    output += "game.bonus_stage=" + std::to_string(play.bonus_stage) + '\n';
+    output += "game.native=" + std::to_string(play.native ? 1 : 0) + '\n';
+    output += "audio.music_voice_overlay="
+        + std::to_string(play.music_voice_overlay ? 1 : 0) + '\n';
+    output += "video.smoothing=" + std::to_string(play.smoothing ? 1 : 0) + '\n';
+    output += "input.nudge_multiplier=";
+    output.append(multiplier.data(), end);
+    output += '\n';
+    return true;
+}
+
+// Each is optional, so a file from before them keeps what it has and plays
+// with the defaults; one that is present and cannot be read makes the file
+// invalid, as every other field does.
+[[nodiscard]] bool parse_play_settings(
+    const std::map<std::string, std::string, std::less<>>& fields,
+    PlaySettings& play)
+{
+    play = {};
+    const auto field = [&fields](const std::string_view key) -> const std::string* {
+        const auto found = fields.find(key);
+        return found == fields.end() ? nullptr : &found->second;
+    };
+    const auto flag = [&field](const std::string_view key, bool& value) {
+        const auto* const text = field(key);
+        if (text == nullptr) {
+            return true;
+        }
+        int number = 0;
+        if (!parse_integer(trim(*text), number) || (number != 0 && number != 1)) {
+            return false;
+        }
+        value = number != 0;
+        return true;
+    };
+    if (const auto* const rom = field("game.rom")) {
+        auto path = unescape_value(trim(*rom));
+        if (!path) {
+            return false;
+        }
+        play.rom = std::move(*path);
+    }
+    if (const auto* const stage = field("game.bonus_stage")) {
+        unsigned int number = 0;
+        if (!parse_integer(trim(*stage), number) || number > 6U) {
+            return false;
+        }
+        play.bonus_stage = static_cast<std::uint8_t>(number);
+    }
+    if (const auto* const multiplier = field("input.nudge_multiplier")) {
+        const auto value = input::parse_nudge_multiplier(trim(*multiplier));
+        if (!value) {
+            return false;
+        }
+        play.nudge_multiplier = *value;
+    }
+    return flag("game.cabinet", play.cabinet)
+        && flag("game.native", play.native)
+        && flag("audio.music_voice_overlay", play.music_voice_overlay)
+        && flag("video.smoothing", play.smoothing);
+}
+
 [[nodiscard]] std::uint64_t overlap_area(
     const DisplayRect& left,
     const DisplayRect& right) noexcept
@@ -643,6 +726,9 @@ std::vector<std::byte> encode_display_config(const DisplayConfig& config)
     append_bindings(text, config.input);
     text += "playfield.artwork_rotation="
         + std::to_string(config.playfield_rotation_degrees) + '\n';
+    if (!append_play_settings(text, config.play)) {
+        return {};
+    }
 
     std::vector<std::byte> bytes(text.size());
     std::transform(
@@ -734,7 +820,8 @@ std::optional<DisplayConfig> decode_display_config(
     // A file written before the backglass image was removed still carries
     // `backglass.path`. Unknown fields are ignored, so it stays loadable and
     // the line simply disappears the next time the file is written.
-    if (!parse_bindings(fields, config.input)) {
+    if (!parse_bindings(fields, config.input)
+        || !parse_play_settings(fields, config.play)) {
         return std::nullopt;
     }
     return config;

@@ -8666,6 +8666,7 @@ void test_cabinet_display_config()
         decoded && *decoded == source,
         "cabinet display configuration round trips escaped fields");
 
+
     auto invalid_version = encoded;
     const auto version_digit = std::find(
         invalid_version.begin(),
@@ -8882,6 +8883,52 @@ void test_cabinet_display_config()
             legacy_decoded && legacy_decoded->playfield == source.playfield
                 && legacy_decoded->input == defaults,
             "a configuration without an input section takes the defaults");
+        check(legacy_decoded && legacy_decoded->play == devils_crush::cabinet::PlaySettings{},
+            "and one from before the player's settings plays with their defaults");
+
+        // The settings the launcher keeps. Each case below swaps one good
+        // line for a bad one, so the file is otherwise valid.
+        auto chosen = source;
+        chosen.play = {
+            .rom = "D:\\Games\\Devil's Crush (USA).pce",
+            .cabinet = false,
+            .bonus_stage = 4U,
+            .native = false,
+            .music_voice_overlay = false,
+            .smoothing = false,
+            .nudge_multiplier = 2.5,
+        };
+        const auto chosen_encoded = encode_display_config(chosen);
+        const auto chosen_decoded = decode_display_config(chosen_encoded);
+        check(chosen_decoded && chosen_decoded->play == chosen.play,
+            "the player's settings round trip through cabinet.ini");
+        std::string chosen_text;
+        for (const auto value : chosen_encoded) {
+            chosen_text.push_back(
+                static_cast<char>(std::to_integer<unsigned char>(value)));
+        }
+        check(chosen_text.find("input.nudge_multiplier=2.5\n") != std::string::npos,
+            "a nudge multiplier is written as it was typed");
+        const std::array<std::pair<std::string_view, std::string_view>, 4> unreadable{{
+            {"game.cabinet=0\n", "game.cabinet=2\n"},
+            {"game.bonus_stage=4\n", "game.bonus_stage=7\n"},
+            {"input.nudge_multiplier=2.5\n", "input.nudge_multiplier=17\n"},
+            {"video.smoothing=0\n", "video.smoothing=off\n"},
+        }};
+        for (const auto& [good, bad] : unreadable) {
+            auto text = chosen_text;
+            const auto at = text.find(good);
+            check(at != std::string::npos, "the encoder writes every player's setting");
+            if (at != std::string::npos) {
+                text.replace(at, good.size(), bad);
+                check(!decode_display_config(to_bytes(text)),
+                    "a player's setting that cannot be read makes the file invalid");
+            }
+        }
+        auto out_of_range = chosen;
+        out_of_range.play.bonus_stage = 7U;
+        check(encode_display_config(out_of_range).empty(),
+            "a bonus stage past six is not written");
 
         // Every cabinet configuration written before the backglass image was
         // removed still carries `backglass.path`. That field is gone, and an

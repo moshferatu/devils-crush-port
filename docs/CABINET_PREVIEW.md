@@ -15,8 +15,13 @@ orientation. R also works for the base single-window view during the session.
 Cabinet mode is the default when launching the game. Use `--no-cabinet`
 for the base single-window view; `--cabinet` remains an explicit enable flag.
 Music voice overlay also defaults to on during play; disable it with
-`--no-music-voice-overlay`. Cabinet mode creates three independent SDL
-windows:
+`--no-music-voice-overlay`. Both defaults, and the ROM, the starting bonus
+stage, native or emulated code, smoothing and the nudge multiplier, can be set
+in `cabinet.ini` instead (`game.*`, `audio.music_voice_overlay`,
+`video.smoothing`, `input.nudge_multiplier`), which is what the launcher
+edits; a flag beats the file for one run. F6 toggles `video.smoothing`, and a
+cabinet session saves it on normal exit like the rotation. Cabinet mode creates
+three independent SDL windows:
 
 1. A resizable portrait playfield. This is the required host window and owns
    input, fullscreen toggling, and the fixed sharp-scaling pipeline.
@@ -781,6 +786,11 @@ cabinet's encoder is wired to send.
 `cabinet.ini` is rewritten in full on exit and after display assignment, so
 the bindings are a stored field rather than a passthrough: an existing file
 without them gains the section the first time the host exits normally.
+
+The single-window view reads the same bindings, so a rebinding made for the
+cabinet, or in the launcher, holds on a desktop too. It never writes the file,
+and it ignores the file's artwork rotation, which belongs to the cabinet's
+playfield monitor.
 
 ### An existing file pins its bindings
 

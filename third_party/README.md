@@ -18,6 +18,9 @@ and attribution information is maintained in
   in `beetle-pce-fork/`, and built through the project-owned CMake wrapper.
   The fork manifest records the base revision, local sources, and ordered
   patch series.
+- stb_truetype 1.26 is vendored unmodified as `stb/stb_truetype.h`, the
+  single header the launcher draws its font with. The lock file records the
+  upstream commit and the file's SHA-256.
 
 ## Updating a dependency
 

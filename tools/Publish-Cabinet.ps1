@@ -6,12 +6,12 @@
     Syncthing.
 
 .DESCRIPTION
-    The staged folder holds one executable, the ROM, and the licence texts.
-    Nothing else is required at run time: the `windows-cabinet` preset links
-    SDL3, Beetle PCE, and the Microsoft C runtime statically, so
-    the cabinet needs no redistributable installed.
+    The staged folder holds the game, its launcher, the ROM, and the licence
+    texts. Nothing else is required at run time: the `windows-cabinet` preset
+    links SDL3, Beetle PCE, and the Microsoft C runtime statically, so the
+    cabinet needs no redistributable installed.
 
-    Runtime state -- display assignment, backup RAM, quick states -- is
+    Runtime state -- settings, display assignment, backup RAM, quick states -- is
     written to `portable-data/` beside the executable and is deliberately
     excluded from the sync by the generated `.stignore`. Each machine keeps
     its own display layout and high scores.
@@ -125,5 +125,7 @@ Write-Host "Staged $destinationFull" -ForegroundColor Green
 $staged | Write-Host
 Write-Host ""
 Write-Host ("Executable is {0:N1} MiB and depends only on Windows system DLLs." -f ($size / 1MB))
-Write-Host "Point Syncthing at the folder above. Run the game from inside it:"
-Write-Host "  .\devils-crush.exe --cabinet"
+Write-Host "Point Syncthing at the folder above. Run the launcher from inside it:"
+Write-Host "  .\devils-crush-launcher.exe"
+Write-Host "or the game directly, which plays with the launcher's settings:"
+Write-Host "  .\devils-crush.exe"

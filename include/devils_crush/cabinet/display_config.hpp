@@ -220,6 +220,34 @@ struct InputBindings {
 // belongs to the right flipper.
 [[nodiscard]] InputBindings default_input_bindings();
 
+// The settings a player chooses once rather than per run: each was a
+// command-line flag first, and the flag still beats the file. The launcher
+// (`src/launcher/launcher.cpp`) is where they are meant to be changed. They
+// apply to normal play only; diagnostic operations keep their reference
+// defaults, as they do without a file.
+struct PlaySettings {
+    // `game.rom`, as UTF-8. Empty: `Devil's Crush.pce` in the working
+    // directory. A relative path is taken from the working directory, as
+    // `--rom` is.
+    std::string rom;
+    // `game.cabinet`: three windows, or one (`--no-cabinet`).
+    bool cabinet = true;
+    // `game.bonus_stage`: 1 to 6 starts in that bonus stage (`--bonus-stage`);
+    // 0 starts on the table.
+    std::uint8_t bonus_stage = 0;
+    // `game.native`: the admitted native routines, or the emulated original
+    // (`--emulate-only`).
+    bool native = true;
+    // `audio.music_voice_overlay` (`--no-music-voice-overlay`).
+    bool music_voice_overlay = true;
+    // `video.smoothing`: what F6 toggles, and F6 is remembered here.
+    bool smoothing = true;
+    // `input.nudge_multiplier` (`--nudge-multiplier`), 0 to 16.
+    double nudge_multiplier = 1.0;
+
+    [[nodiscard]] bool operator==(const PlaySettings&) const = default;
+};
+
 struct DisplayConfig {
     std::uint32_t format_version = kDisplayConfigVersion;
     WindowPlacement playfield;
@@ -228,6 +256,7 @@ struct DisplayConfig {
     InputBindings input = default_input_bindings();
     // Artwork rotation, separate from the monitor orientation in placements.
     int playfield_rotation_degrees = 0;
+    PlaySettings play;
 
     [[nodiscard]] bool operator==(const DisplayConfig&) const = default;
 };

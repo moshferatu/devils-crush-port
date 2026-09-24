@@ -321,8 +321,65 @@ if(DC_BUILD_APP)
             VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     )
 
+    # The launcher's icon and heading (tools/make_launcher_art.cpp): the title
+    # screen's logo, decoded by the port from the player's ROM, as a Windows
+    # .ico and a C header. The launcher target below runs it when there is a
+    # ROM to run it on.
+    add_executable(dc_launcher_art tools/make_launcher_art.cpp)
+    target_link_libraries(dc_launcher_art PRIVATE DevilsCrush::Core SDL3::SDL3)
+    target_compile_features(dc_launcher_art PRIVATE cxx_std_20)
+    dc_enable_strict_warnings(dc_launcher_art)
+
+    # The launcher (src/launcher/launcher.cpp): portable-data/cabinet.ini with
+    # a face on it, and a Play button. It ships beside devils-crush.exe and
+    # starts it. SDL as the game is, the game's own reading and writing of the
+    # file, and stb_truetype to draw the system's font.
+    add_executable(devils_crush_launcher WIN32 src/launcher/launcher.cpp)
+    target_link_libraries(devils_crush_launcher PRIVATE DevilsCrush::Core SDL3::SDL3 comdlg32)
+    target_include_directories(devils_crush_launcher PRIVATE third_party/stb)
+    target_compile_features(devils_crush_launcher PRIVATE cxx_std_20)
+    dc_enable_strict_warnings(devils_crush_launcher)
+    set_target_properties(
+        devils_crush_launcher
+        PROPERTIES
+            OUTPUT_NAME "devils-crush-launcher"
+    )
+    # Its icon and its heading are the title's logo, made from the ROM at
+    # build time, since nothing of the ROM's is kept in the repository.
+    # Without one the launcher builds without an icon, and its heading is
+    # text.
+    set(DC_LAUNCHER_ART_ROM "${CMAKE_CURRENT_SOURCE_DIR}/Devil's Crush.pce"
+        CACHE FILEPATH "The ROM the launcher's icon and heading are drawn from")
+    if(EXISTS "${DC_LAUNCHER_ART_ROM}")
+        set(dc_launcher_icon "${CMAKE_CURRENT_BINARY_DIR}/devils-crush-launcher.ico")
+        set(dc_launcher_logo "${CMAKE_CURRENT_BINARY_DIR}/dc_launcher_logo.h")
+        add_custom_command(
+            OUTPUT "${dc_launcher_icon}" "${dc_launcher_logo}"
+            COMMAND dc_launcher_art "${DC_LAUNCHER_ART_ROM}" "${dc_launcher_icon}" "${dc_launcher_logo}"
+            DEPENDS dc_launcher_art "${DC_LAUNCHER_ART_ROM}"
+            COMMENT "Drawing the launcher's icon and heading from the title's logo"
+            VERBATIM
+        )
+        file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/devils-crush-launcher.rc"
+             CONTENT "1 ICON \"${dc_launcher_icon}\"\n")
+        target_sources(
+            devils_crush_launcher
+            PRIVATE
+                "${dc_launcher_logo}"
+                "${CMAKE_CURRENT_BINARY_DIR}/devils-crush-launcher.rc"
+        )
+        set_source_files_properties(
+            "${CMAKE_CURRENT_BINARY_DIR}/devils-crush-launcher.rc"
+            PROPERTIES OBJECT_DEPENDS "${dc_launcher_icon}"
+        )
+        target_include_directories(devils_crush_launcher PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+        target_compile_definitions(devils_crush_launcher PRIVATE DC_LAUNCHER_LOGO)
+    else()
+        message(STATUS "No ROM at ${DC_LAUNCHER_ART_ROM}: the launcher is built without its icon")
+    endif()
+
     install(
-        TARGETS devils_crush
+        TARGETS devils_crush devils_crush_launcher
         RUNTIME DESTINATION .
         COMPONENT Runtime
     )

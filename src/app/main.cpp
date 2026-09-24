@@ -4538,6 +4538,9 @@ parse_logical_address_range(const std::string_view text)
     CommandLine options;
     std::optional<bool> cabinet_override;
     std::optional<bool> music_overlay_override;
+    bool rom_override = false;
+    bool bonus_stage_override = false;
+    bool nudge_multiplier_override = false;
 
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument = argv[index];
@@ -4549,6 +4552,7 @@ parse_logical_address_range(const std::string_view text)
                 return options;
             }
             options.rom_path = argv[++index];
+            rom_override = true;
         } else if (argument == "--validate-rom") {
             options.validate_only = true;
             const std::string_view next =
@@ -4586,6 +4590,7 @@ parse_logical_address_range(const std::string_view text)
                 return options;
             }
             options.bonus_stage = static_cast<std::uint8_t>(stage);
+            bonus_stage_override = true;
         } else if (argument == "--capture-session") {
             if (index + 1 >= argc) {
                 options.error = "--capture-session requires a directory.";
@@ -5208,6 +5213,7 @@ parse_logical_address_range(const std::string_view text)
                 return options;
             }
             options.nudge_multiplier = *value;
+            nudge_multiplier_override = true;
         } else if (argument == "--cabinet-launch-check") {
             options.cabinet_launch_check = true;
         } else if (argument == "--cabinet-launch-flipper-probe") {
@@ -5425,10 +5431,33 @@ parse_logical_address_range(const std::string_view text)
         && (operation_count == 0 || options.cabinet_smoke_test);
     // Default enhancements belong to normal play. Keep diagnostic recordings
     // and reference-device comparisons reproducible unless explicitly enabled.
-    options.cabinet = cabinet_override.value_or(
-        host_selected && !options.cabinet_smoke_test);
+    const bool play_selected = host_selected && !options.cabinet_smoke_test;
+    // Normal play also takes what the flags leave unsaid from cabinet.ini,
+    // where the launcher keeps it. A file that cannot be read is reported by
+    // the host when it loads the file again, and plays with the defaults.
+    devils_crush::cabinet::PlaySettings play;
+    if (play_selected) {
+        const auto loaded =
+            devils_crush::cabinet::load_display_config(kCabinetConfigPath);
+        if (loaded.loaded()) {
+            play = loaded.config.play;
+        }
+        if (!rom_override && !play.rom.empty()) {
+            options.rom_path = std::filesystem::path(
+                std::u8string(play.rom.begin(), play.rom.end()));
+        }
+        if (!bonus_stage_override) {
+            options.bonus_stage = play.bonus_stage;
+        }
+        if (!nudge_multiplier_override) {
+            options.nudge_multiplier = play.nudge_multiplier;
+        }
+        options.emulate_only = options.emulate_only || !play.native;
+    }
+    options.cabinet = cabinet_override.value_or(play_selected && play.cabinet);
     options.music_voice_overlay = music_overlay_override.value_or(
-        host_selected && !options.emulated_psg);
+        host_selected && !options.emulated_psg
+        && (!play_selected || play.music_voice_overlay));
     // The drain and nudge probes deploy the registry too, so they can be
     // bisected with --registry-slice and --registry-exclude like the host can,
     // and so they measure the configuration people actually play.
@@ -9735,6 +9764,13 @@ void print_usage()
         << "Nudge strength: --nudge-multiplier <factor>\n"
            "  Scale the original nudge impulse (0-16, default 1; e.g. 2.5).\n"
            "  Applies to keyboard, gamepad and PinOne nudges.\n\n"
+        << "Settings (portable-data/cabinet.ini, which the launcher edits):\n"
+           "  game.rom, game.cabinet, game.bonus_stage, game.native,\n"
+           "  audio.music_voice_overlay, video.smoothing and\n"
+           "  input.nudge_multiplier set normal play's defaults for --rom,\n"
+           "  --no-cabinet, --bonus-stage, --emulate-only,\n"
+           "  --no-music-voice-overlay, F6 and --nudge-multiplier. A flag\n"
+           "  beats the file for that run.\n\n"
         << "Saved data (all under portable-data/):\n"
         << "  devils-crush.sav      The cartridge's backup RAM, holding the\n"
            "                        five numbered save slots the game writes\n"
@@ -20406,7 +20442,10 @@ int run_windows_host(
     devils_crush::cabinet::DisplayConfig cabinet_config;
     const bool persist_cabinet_config =
         cabinet_mode && frame_limit <= 0;
-    if (persist_cabinet_config || presentation_check) {
+    // Read in either mode, so the one window plays with the same keys and
+    // smoothing as the three; written only by the cabinet, which is where
+    // windows are assigned.
+    if (frame_limit <= 0 || presentation_check) {
         const auto loaded =
             devils_crush::cabinet::load_display_config(
                 kCabinetConfigPath);
@@ -20420,6 +20459,11 @@ int run_windows_host(
             std::cerr << loaded.message
                       << " Using safe window defaults.\n";
         }
+    }
+    // The artwork rotation is the cabinet's: its playfield monitor stands on
+    // end, and a desktop window does not.
+    if (!cabinet_mode) {
+        cabinet_config.playfield_rotation_degrees = 0;
     }
     // Resolved once: the names cannot change while the host runs, and this is
     // where an unusable one gets reported.
@@ -20548,7 +20592,8 @@ int run_windows_host(
     bool reported_table_view = false;
     TableMotionPresenter table_motion;
     FrameArtworkPresenter frame_artwork;
-    bool smoothing_enabled = true;
+    bool smoothing_enabled =
+        presentation_check || cabinet_config.play.smoothing;
     bool motion_ready = false;
     std::optional<bool> reported_smoothing;
     TablePresentationSample presentation_sample;
@@ -21041,6 +21086,7 @@ int run_windows_host(
                 presentation_sample.report(smoothing_enabled);
                 presentation_sample = {};
                 smoothing_enabled = !smoothing_enabled;
+                cabinet_config.play.smoothing = smoothing_enabled;
                 table_motion.reset();
                 frame_artwork.reset();
                 motion_ready = false;
