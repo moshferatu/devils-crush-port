@@ -56,7 +56,7 @@ std::string high_score_name_at(
                     || (character >= '0' && character <= '9')
                     || character == ' '
                 ? character
-                : ' ');
+                : character == '[' ? '.' : ' ');
     }
     return name;
 }

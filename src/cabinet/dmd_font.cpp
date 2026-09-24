@@ -152,6 +152,19 @@ std::optional<DmdGlyph> DmdFont::glyph(const char character) const noexcept
             0x00U,
         };
     }
+    // A name can end in one: the letter after `Z` in high-score entry.
+    if (character == '.') {
+        return DmdGlyph{
+            0x00U,
+            0x00U,
+            0x00U,
+            0x00U,
+            0x00U,
+            0x30U,
+            0x30U,
+            0x00U,
+        };
+    }
     if (character == ',') {
         return DmdGlyph{
             0x00U,

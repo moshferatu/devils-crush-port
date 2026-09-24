@@ -20618,6 +20618,26 @@ int run_windows_host(
         std::cerr << "Could not observe bonus results; disabling DMD.\n";
         destroy_auxiliary_window(dmd);
     }
+    // Name entry keeps its letters out of the high-score table until it ends,
+    // so the DMD is told when it runs rather than reading the table.
+    if (cabinet_mode && dmd.renderer != nullptr
+        && !(runtime.install_execution_hook({
+                 .routine = {.physical_bank = 0x09U, .logical_pc = 0x6629U},
+                 .mode = HookMode::observe,
+                 .callback = [&dmd_panel](const RoutineEntry&) {
+                     dmd_panel.begin_name_entry();
+                 },
+             })
+            && runtime.install_execution_hook({
+                .routine = {.physical_bank = 0x09U, .logical_pc = 0x6698U},
+                .mode = HookMode::observe,
+                .callback = [&dmd_panel](const RoutineEntry&) {
+                    dmd_panel.end_name_entry();
+                },
+            }))) {
+        std::cerr << "Could not observe high-score name entry; disabling DMD.\n";
+        destroy_auxiliary_window(dmd);
+    }
     std::uint64_t backglass_logo_frame = 0U;
     bool assignment_active = false;
     auto assignment_role = AssignmentRole::playfield;

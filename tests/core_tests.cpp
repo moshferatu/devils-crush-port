@@ -10606,6 +10606,14 @@ void test_high_score_table()
                    *defaults, kHighScoreRankCount)
                 .empty(),
         "a high-score name is decoded and an invalid rank is empty");
+    {
+        auto named = *defaults;
+        named.bytes[3U * kHighScoreRankCount] = 0x43U;
+        named.bytes[4U * kHighScoreRankCount] = 0x5BU;
+        named.bytes[5U * kHighScoreRankCount] = 0x5CU;
+        check(devils_crush::core::high_score_name_at(named, 0U) == "C. ",
+            "the letters past Z read as the High Scores screen draws them");
+    }
     check(
         !devils_crush::core::read_high_score_table(
             std::span<const std::byte>(work_ram).first(0x1FFFU)),
@@ -11676,6 +11684,72 @@ void test_dmd_attract_transition()
     ram.fill(std::byte{0});
     panel.observe(ram);
     check(panel.attract(), "live game high scores also return cleanly to title");
+}
+
+void test_dmd_name_entry()
+{
+    using devils_crush::cabinet::DmdPanel;
+    DmdPanel panel;
+    std::array<std::byte, 8192> ram{};
+    ram[0x54] = std::byte{0};
+    ram[0xD52] = std::byte{3};
+    panel.observe(ram);
+    ram[0xD52] = std::byte{0};
+    panel.observe(ram);
+    check(!panel.attract(), "a game over shows the live page");
+
+    // Measured: High Scores is up three frames before 09:6629 starts the entry.
+    ram[0x54] = std::byte{4};
+    for (int frame = 0; frame < 3; ++frame) {
+        panel.observe(ram);
+        check(!panel.attract() && !panel.name_entry(),
+            "the carousel does not flash up before the entry");
+    }
+    panel.begin_name_entry();
+    ram[0xD61] = std::byte{1};
+    ram[0xD65] = std::byte{0};
+    for (std::size_t i = 0; i < 3U; ++i) ram[0xD66 + i] = std::byte{'A'};
+    panel.observe(ram);
+    check(panel.name_entry() && panel.entry_name() == "AAA", "the entry starts at AAA");
+    // The letters live at $2D66-$2D68 until the entry ends; the table, where
+    // the carousel reads names, still has the rank's old one.
+    ram[0xD66] = std::byte{'C'};
+    ram[0xD67] = std::byte{0x5B};
+    ram[0xD68] = std::byte{0x5C};
+    ram[0xD65] = std::byte{2};
+    panel.observe(ram);
+    check(panel.entry_name() == "C. ", "the entry shows each letter as it is chosen");
+    panel.end_name_entry();
+    panel.observe(ram);
+    check(panel.name_entry(), "the finished name stays up until the screen changes");
+    ram[0x54] = std::byte{3};
+    panel.observe(ram);
+    check(!panel.name_entry() && panel.attract(), "the title returns to the carousel");
+
+    // A game over whose score does not rank has no entry: the carousel
+    // follows once the hold runs out.
+    ram[0x54] = std::byte{0};
+    ram[0xD52] = std::byte{3};
+    panel.observe(ram);
+    ram[0xD52] = std::byte{0};
+    panel.observe(ram);
+    ram[0x54] = std::byte{4};
+    bool carousel = false;
+    for (int frame = 0; frame < 12 && !carousel; ++frame) {
+        panel.observe(ram);
+        carousel = panel.attract();
+    }
+    check(carousel && !panel.name_entry(), "High Scores without an entry shows the carousel");
+
+    // The pause menu's High Scores, left inside the hold, resumes play.
+    ram[0x54] = std::byte{0};
+    ram[0xD52] = std::byte{2};
+    panel.observe(ram);
+    ram[0x54] = std::byte{4};
+    panel.observe(ram);
+    ram[0x54] = std::byte{0};
+    panel.observe(ram);
+    check(!panel.attract(), "leaving the pause menu's High Scores returns to the live page");
 }
 
 void test_dmd_text_layout()
@@ -21945,6 +22019,7 @@ int main()
     test_text_tile_write();
     test_dmd_text_layout();
     test_dmd_attract_transition();
+    test_dmd_name_entry();
     test_table_motion();
     test_table_palette_cache();
     test_native_registry();

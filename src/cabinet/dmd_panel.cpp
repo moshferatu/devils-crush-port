@@ -64,6 +64,18 @@ void DmdPanel::begin_bonus_result() noexcept
     result_counting_ = false;
 }
 
+void DmdPanel::begin_name_entry() noexcept
+{
+    name_entry_ = true;
+    name_entry_ended_ = false;
+    name_entry_screen_seen_ = false;
+}
+
+void DmdPanel::end_name_entry() noexcept
+{
+    name_entry_ended_ = true;
+}
+
 void DmdPanel::observe(const std::span<const std::byte> ram)
 {
     const auto decoded = decode_cabinet_state(ram);
@@ -78,7 +90,51 @@ void DmdPanel::observe(const std::span<const std::byte> ram)
             | (byte(offset + 1U) << 8U) | (byte(offset + 2U) << 16U)) * 100U;
     };
     demo_ = byte(0x254U) != 0U;
-    if (state_.screen_selector == 3U || state_.screen_selector == 4U || demo_) {
+    if (name_entry_) {
+        if (state_.screen_selector == 4U) {
+            name_entry_screen_seen_ = true;
+        } else if (name_entry_screen_seen_ || demo_) {
+            name_entry_ = false;
+        }
+    }
+    if (name_entry_) {
+        // `$2D61` is the rank being named. The letters scroll from `A` at
+        // `$41` to `$5C`: `$5B` is drawn as a full stop and `$5C` as a blank.
+        // The setup after `09:6629` puts `AAA` there within the same frame.
+        entry_rank_ = std::min<std::size_t>(byte(0xD61U), core::kHighScoreRankCount - 1U);
+        entry_name_.clear();
+        for (std::size_t i = 0; i < 3U; ++i) {
+            const auto c = static_cast<char>(byte(0xD66U + i));
+            entry_name_.push_back(c >= 'A' && c <= 'Z' ? c : c == '[' ? '.' : ' ');
+        }
+        entry_cursor_ = name_entry_ended_ ? 3U : std::min(byte(0xD65U), 3U);
+        // `$2CC1` counts four-frame steps; the screen hides the letter under
+        // the cursor on the odd ones.
+        entry_blink_ = (byte(0xCC1U) & 1U) != 0U;
+        const auto rank = entry_rank_;
+        entry_score_ = static_cast<std::uint64_t>(byte(0x200U + rank)
+            | (byte(0x207U + rank) << 8U) | (byte(0x20EU + rank) << 16U)) * 100U;
+    }
+    // The High Scores screen is up a few frames before the game over behind
+    // it has sorted the table and decided whether there is a name to enter
+    // (`09:6327` draws it, then `09:6605` sorts). Holding the live page over
+    // those frames keeps the carousel from flashing up in front of the entry.
+    // The sort swaps the player's score out of the live column, so the score
+    // is the one the hold began with.
+    if (state_.screen_selector == 4U && last_selector_ != 4U && !attract_) {
+        high_scores_hold_ = kHighScoresHoldFrames;
+        held_score_ = state_.displayed_score;
+    }
+    last_selector_ = state_.screen_selector;
+    // Leaving the screen ends the hold as running out would, unless it is
+    // back to the live table: the pause menu opens High Scores too.
+    const bool held_screen_left = high_scores_hold_ != 0U && state_.screen_selector != 4U
+        && !(state_.screen_selector <= 1U && state_.balls_in_session != 0U);
+    if (high_scores_hold_ != 0U) --high_scores_hold_;
+    if (name_entry_ || state_.screen_selector != 4U) high_scores_hold_ = 0U;
+    if (high_scores_hold_ != 0U) state_.displayed_score = held_score_;
+    if (state_.screen_selector == 3U || held_screen_left
+        || (state_.screen_selector == 4U && high_scores_hold_ == 0U) || demo_) {
         attract_ = true;
     } else if (state_.screen_selector <= 1U && state_.balls_in_session != 0U) {
         attract_ = false;
@@ -123,6 +179,23 @@ render::ArgbImage DmdPanel::compose(const DmdFont& font,
 {
     render::ArgbImage image{width, height,
         std::vector<std::uint32_t>(width * height, 0xFF000000U)};
+    if (name_entry_) {
+        label(image, font, entry_rank_ == 0U ? "GRAND CHAMPION"
+            : "HIGH SCORE #" + std::to_string(entry_rank_), 160, 6);
+        constexpr int name_x = 160 - 3 * 4;
+        for (std::size_t i = 0; i < entry_name_.size(); ++i) {
+            const int x = name_x + static_cast<int>(i) * 8;
+            if (i != entry_cursor_ || !entry_blink_) {
+                label(image, font, std::string_view(&entry_name_[i], 1), x + 4, 28, 0xFFFCE024U);
+            }
+            if (i == entry_cursor_) {
+                for (int col = 0; col < 7; ++col) pixel(image, x + col, 37, 0xFFFCE024U);
+            }
+        }
+        number(image, font, entry_score_, 160, 46, 2);
+        label(image, font, "ENTER YOUR INITIALS", 160, 94);
+        return image;
+    }
     if (attract()) {
         if (high_scores) {
             const auto rank = dmd_high_score_rank(elapsed);

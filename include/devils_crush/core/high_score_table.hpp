@@ -63,8 +63,10 @@ inline constexpr std::size_t kHighScoreFileSize = 6U + kHighScoreTableBytes;
     const HighScoreTable& table,
     std::size_t rank) noexcept;
 
-// The three display characters stored alongside a ranked score. Bytes the
-// cartridge font cannot display are replaced with spaces.
+// The three display characters stored alongside a ranked score. Name entry
+// scrolls from `A` past `Z` to `$5B`, which the High Scores screen draws as a
+// full stop, and `$5C`, which it draws blank; the first is returned as '.'.
+// Bytes the cartridge font cannot display are replaced with spaces.
 [[nodiscard]] std::string high_score_name_at(
     const HighScoreTable& table,
     std::size_t rank);

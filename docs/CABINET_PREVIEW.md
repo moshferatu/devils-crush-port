@@ -932,6 +932,22 @@ balls remaining switches the DMD to live play. This prevents a false GAME OVER
 flash during the attract loop while preserving real game-over presentation
 after a live session. The carousel clock continues across these transitions.
 
+When a game over's score ranks, the DMD shows the name entry instead: the
+rank, the three letters with the one under the cursor blinking and
+underlined, the new score, and ENTER YOUR INITIALS. The letters cannot come
+from the table. The entry loop keeps them at `$2D66-$2D68`, with the cursor
+at `$2D65` and the rank at `$2D61`, and copies them into the name rows only
+when it ends -- at the third letter (`09:6791`) or on its timeout
+(`09:6683`) -- so until then the table still holds the rank's old name, `AAA`
+after a fresh boot. Observe hooks at `09:6629`, where the entry is set up,
+and `09:6698`, where it has ended, bracket it; the page stays up with the
+finished name until the High Scores screen gives way. The screen itself is
+drawn three frames before `09:6629`, while `09:6605` is still sorting, so the
+DMD keeps the game-over page for up to ten frames when High Scores replaces
+a live session, rather than flashing the carousel first. The letters scroll
+from `A` past `Z` to `$5B`, drawn as a full stop, and `$5C`, drawn blank; the
+carousel shows them the same way.
+
 The presentation reads scores from `$2205/$220C/$2213`, selected by `$2251`,
 and multiplies stored units by 100. Base bonus `$2D50` is also in hundreds.
 The standard three-ball countdown at `$2D52` becomes BALL 1, 2, then 3.

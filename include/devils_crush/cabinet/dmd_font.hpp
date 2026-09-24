@@ -39,7 +39,7 @@ public:
     // The game stores upper-case forms only. Lower-case label characters map
     // to those same original glyphs, matching the cartridge's presentation;
     // the host also supplies the punctuation needed by its score and rank
-    // labels.
+    // labels and by high-score names.
     [[nodiscard]] std::optional<DmdGlyph> glyph(char character) const noexcept;
     // Original 16x16 score artwork, including its dim segments and shading.
     [[nodiscard]] const DmdScoreDigit& score_digit(
