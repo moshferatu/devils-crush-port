@@ -30,7 +30,7 @@ and starts the game, then comes back when the game closes.
 | Tab | |
 | --- | --- |
 | Game | The ROM, cabinet or desktop mode, a starting bonus stage, and native or emulated game code |
-| Video | Smoothing, and the cabinet's playfield rotation and which windows are fullscreen |
+| Video | Smoothing, and for the cabinet: the playfield rotation, and which monitor each window is on and whether it is fullscreen |
 | Audio | The music voice overlay |
 | Cabinet | The nudge board and nudge strength, and the analog plunger |
 | Keyboard | The keys for each PC Engine pad input, the launch keys, and each flipper's pad inputs |

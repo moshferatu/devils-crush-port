@@ -206,6 +206,7 @@ enum Kind { K_HEAD, K_CHOICE, K_RANGE, K_PATH, K_TEXT, K_NUMBER, K_KEYS, K_INPUT
 enum Setting {
     S_ROM, S_CABINET, S_BONUS_STAGE, S_NATIVE,
     S_SMOOTHING, S_ROTATION, S_FULLSCREEN_PLAYFIELD, S_FULLSCREEN_DMD, S_FULLSCREEN_BACKGLASS,
+    S_MONITOR_PLAYFIELD, S_MONITOR_DMD, S_MONITOR_BACKGLASS,
     S_OVERLAY,
     S_NUDGE_STRENGTH, S_NUDGE_ENABLED, S_NUDGE_DEVICE, S_NUDGE_X, S_NUDGE_Y, S_NUDGE_THRESHOLD,
     S_NUDGE_RELEASE, S_NUDGE_COOLDOWN,
@@ -289,14 +290,19 @@ void build_rows()
         "between the game's sixty a second. Off: the game's frames only. F6 changes it while "
         "playing, and a cabinet remembers.");
     static const char cabinet_only[] =
-        "For the cabinet's windows; a desktop window ignores it. Which monitor each window is on "
-        "is chosen in the game, with F12.";
+        "For the cabinet's windows; a desktop window ignores it.";
+    static const char monitor_help[] =
+        "The monitor the window opens on. F12 in the game moves the windows too, and the game "
+        "remembers where they were left.";
     add_head(TAB_VIDEO, "Cabinet Windows", cabinet_only);
     add_choice(TAB_VIDEO, S_ROTATION, "Playfield Rotation", rotation_choices, count_of(rotation_choices),
         "How far the playfield's picture is turned clockwise, for a monitor that is mounted on its "
         "side. R and Shift+R turn it while playing, and the game remembers.");
+    add_choice(TAB_VIDEO, S_MONITOR_PLAYFIELD, "Playfield Monitor", nullptr, 0, monitor_help);
     add_choice(TAB_VIDEO, S_FULLSCREEN_PLAYFIELD, "Playfield Fullscreen", on_off, 2, cabinet_only);
+    add_choice(TAB_VIDEO, S_MONITOR_DMD, "DMD Monitor", nullptr, 0, monitor_help);
     add_choice(TAB_VIDEO, S_FULLSCREEN_DMD, "DMD Fullscreen", on_off, 2, cabinet_only);
+    add_choice(TAB_VIDEO, S_MONITOR_BACKGLASS, "Backglass Monitor", nullptr, 0, monitor_help);
     add_choice(TAB_VIDEO, S_FULLSCREEN_BACKGLASS, "Backglass Fullscreen", on_off, 2, cabinet_only);
 
     add_choice(TAB_AUDIO, S_OVERLAY, "Music Voice Overlay", on_off, 2,
@@ -368,7 +374,110 @@ void build_rows()
 
 devils_crush::cabinet::WindowPlacement& placement_of(DisplayConfig& c, int id)
 {
-    return id == S_FULLSCREEN_DMD ? c.dmd : id == S_FULLSCREEN_BACKGLASS ? c.backglass : c.playfield;
+    if (id == S_FULLSCREEN_DMD || id == S_MONITOR_DMD) return c.dmd;
+    if (id == S_FULLSCREEN_BACKGLASS || id == S_MONITOR_BACKGLASS) return c.backglass;
+    return c.playfield;
+}
+
+bool is_monitor(int id) { return id == S_MONITOR_PLAYFIELD || id == S_MONITOR_DMD || id == S_MONITOR_BACKGLASS; }
+
+// --- monitors ----------------------------------------------------------------
+//
+// Named and measured as the game names and measures them (`src/app/main.cpp`,
+// `enumerate_host_displays`), so that the monitor chosen here is the one
+// `resolve_display` finds when the game opens the window. A monitor is known by
+// its name; two with the same name are told apart by where the window is,
+// which is why choosing one also moves the window onto it.
+
+struct Monitors {
+    std::vector<devils_crush::cabinet::DisplayDescriptor> list;
+    std::vector<std::string> labels;
+};
+Monitors monitors;
+
+// A window on a monitor the file names that is not connected.
+constexpr int kMonitorAbsent = 1000;
+
+devils_crush::cabinet::DisplayRotation rotation_of(SDL_DisplayOrientation o)
+{
+    using devils_crush::cabinet::DisplayRotation;
+    switch (o) {
+    case SDL_ORIENTATION_LANDSCAPE: return DisplayRotation::landscape;
+    case SDL_ORIENTATION_LANDSCAPE_FLIPPED: return DisplayRotation::landscape_flipped;
+    case SDL_ORIENTATION_PORTRAIT: return DisplayRotation::portrait;
+    case SDL_ORIENTATION_PORTRAIT_FLIPPED: return DisplayRotation::portrait_flipped;
+    default: return DisplayRotation::unknown;
+    }
+}
+
+void find_monitors()
+{
+    monitors = {};
+    int count = 0;
+    SDL_DisplayID* const ids = SDL_GetDisplays(&count);
+    const auto primary = SDL_GetPrimaryDisplay();
+    for (int i = 0; ids != nullptr && i < count; ++i) {
+        SDL_Rect b{};
+        if (!SDL_GetDisplayBounds(ids[i], &b) || b.w <= 0 || b.h <= 0) continue;
+        const char* const name = SDL_GetDisplayName(ids[i]);
+        monitors.list.push_back({
+            .identity = name != nullptr && name[0] != '\0' ? name : "Unnamed display",
+            .bounds = {.x = b.x, .y = b.y, .width = b.w, .height = b.h},
+            .rotation = rotation_of(SDL_GetCurrentDisplayOrientation(ids[i])),
+            .primary = ids[i] == primary,
+        });
+    }
+    SDL_free(ids);
+    for (const auto& m : monitors.list) {
+        char part[96];
+        std::snprintf(part, sizeof part, ", %d \xC3\x97 %d", m.bounds.width, m.bounds.height);
+        std::string label = m.identity + part;
+        const auto same = std::ranges::count_if(monitors.list, [&](const auto& o) { return o.identity == m.identity; });
+        if (same > 1) {
+            std::snprintf(part, sizeof part, " at %d, %d", m.bounds.x, m.bounds.y);
+            label += part;
+        }
+        if (m.primary) label += " (main)";
+        monitors.labels.push_back(std::move(label));
+    }
+}
+
+// The monitor the game would open the window on, as `resolve_display` picks
+// it; or absent, for a monitor the file names that is not connected, which the
+// game would stand another in for.
+int monitor_get(DisplayConfig& c, int id)
+{
+    const auto& p = placement_of(c, id);
+    if (monitors.list.empty()) return 0;
+    if (!p.display_identity.empty()
+        && std::ranges::none_of(monitors.list, [&](const auto& m) { return m.identity == p.display_identity; }))
+        return kMonitorAbsent;
+    return static_cast<int>(devils_crush::cabinet::resolve_display(p, monitors.list).value_or(0));
+}
+
+// Onto the monitor, in the middle, as F12 in the game puts it: at the size the
+// window was if that fits, and the game's own size for it if not.
+void monitor_set(DisplayConfig& c, int id, int v)
+{
+    if (v < 0 || v >= static_cast<int>(monitors.list.size()) || v == monitor_get(c, id)) return;
+    const auto& m = monitors.list[static_cast<std::size_t>(v)];
+    auto& p = placement_of(c, id);
+    int w = id == S_MONITOR_PLAYFIELD ? 720 : 960;
+    int h = id == S_MONITOR_PLAYFIELD ? 1280 : id == S_MONITOR_DMD ? 240 : 540;
+    if (p.geometry.valid() && p.geometry.width <= m.bounds.width && p.geometry.height <= m.bounds.height) {
+        w = p.geometry.width;
+        h = p.geometry.height;
+    }
+    w = std::min(w, m.bounds.width);
+    h = std::min(h, m.bounds.height);
+    p.display_identity = m.identity;
+    p.rotation = m.rotation;
+    p.geometry = {
+        .x = m.bounds.x + (m.bounds.width - w) / 2,
+        .y = m.bounds.y + (m.bounds.height - h) / 2,
+        .width = w,
+        .height = h,
+    };
 }
 
 int setting_get(DisplayConfig& c, int id)
@@ -384,6 +493,9 @@ int setting_get(DisplayConfig& c, int id)
     case S_FULLSCREEN_PLAYFIELD:
     case S_FULLSCREEN_DMD:
     case S_FULLSCREEN_BACKGLASS: return placement_of(c, id).fullscreen;
+    case S_MONITOR_PLAYFIELD:
+    case S_MONITOR_DMD:
+    case S_MONITOR_BACKGLASS: return monitor_get(c, id);
     case S_OVERLAY: return c.play.music_voice_overlay;
     case S_NUDGE_STRENGTH: return static_cast<int>(std::lround(c.play.nudge_multiplier * 10.0));
     case S_NUDGE_ENABLED: return n.enabled;
@@ -414,6 +526,9 @@ void setting_set(DisplayConfig& c, int id, int v)
     case S_FULLSCREEN_PLAYFIELD:
     case S_FULLSCREEN_DMD:
     case S_FULLSCREEN_BACKGLASS: placement_of(c, id).fullscreen = v != 0; break;
+    case S_MONITOR_PLAYFIELD:
+    case S_MONITOR_DMD:
+    case S_MONITOR_BACKGLASS: monitor_set(c, id, v); break;
     case S_OVERLAY: c.play.music_voice_overlay = v != 0; break;
     case S_NUDGE_STRENGTH: c.play.nudge_multiplier = v / 10.0; break;
     case S_NUDGE_ENABLED: n.enabled = v != 0; break;
@@ -485,8 +600,19 @@ void row_copy(DisplayConfig& to, DisplayConfig& from, const Row& r)
     case K_CHOICE:
     case K_RANGE:
     case K_NUMBER:
-        if (r.id == S_NUDGE_STRENGTH) to.play.nudge_multiplier = from.play.nudge_multiplier;
-        else setting_set(to, r.id, setting_get(from, r.id));
+        if (r.id == S_NUDGE_STRENGTH) {
+            to.play.nudge_multiplier = from.play.nudge_multiplier;
+        } else if (is_monitor(r.id)) {
+            // Where the window is, not only which monitor: the defaults have
+            // nowhere, and the game opens it in the middle of the main one.
+            auto& t = placement_of(to, r.id);
+            const auto& f = placement_of(from, r.id);
+            t.display_identity = f.display_identity;
+            t.geometry = f.geometry;
+            t.rotation = f.rotation;
+        } else {
+            setting_set(to, r.id, setting_get(from, r.id));
+        }
         break;
     case K_PATH:
     case K_TEXT: text_of(to, r.id) = text_of(from, r.id); break;
@@ -797,6 +923,7 @@ const RomCheck& rom_check()
 
 void load()
 {
+    find_monitors();
     ui.ini = (ui.base / kConfigRelative).lexically_normal();
     std::error_code error;
     ui.ini_exists = std::filesystem::exists(ui.ini, error);
@@ -810,7 +937,7 @@ void load()
             say(false, "Read %s", name.c_str());
         } else {
             say(true, "%s could not be read, so the game would play it as the defaults shown here. Save "
-                "replaces it, and which monitor each window is on with it.", name.c_str());
+                "replaces it.", name.c_str());
         }
     } else {
         say(false, "There is no %s yet. Save or Play makes one here.", name.c_str());
@@ -1058,7 +1185,10 @@ constexpr int kDropShown = 10;
 std::vector<int> row_options(const Row& r)
 {
     std::vector<int> out;
-    if (r.kind == K_CHOICE) {
+    if (is_monitor(r.id)) {
+        for (int i = 0; i < static_cast<int>(monitors.list.size()); ++i) out.push_back(i);
+        if (setting_get(ui.cfg, r.id) == kMonitorAbsent) out.push_back(kMonitorAbsent);
+    } else if (r.kind == K_CHOICE) {
         for (int i = 0; i < r.count; ++i) out.push_back(r.choices[i].value);
     } else if (r.kind == K_INPUTS) {
         const auto& have = inputs_of(ui.cfg, r.id);
@@ -1075,6 +1205,11 @@ std::vector<int> row_options(const Row& r)
 
 std::string option_text(const Row& r, int v)
 {
+    if (is_monitor(r.id)) {
+        if (v == kMonitorAbsent) return placement_of(ui.cfg, r.id).display_identity + " (not connected)";
+        if (v >= 0 && v < static_cast<int>(monitors.labels.size())) return monitors.labels[static_cast<std::size_t>(v)];
+        return "No monitor found";
+    }
     if (r.kind == K_CHOICE) {
         for (int k = 0; k < r.count; ++k)
             if (r.choices[k].value == v) return r.choices[k].label;
@@ -1810,6 +1945,12 @@ bool handle(const SDL_Event& e)
 
     switch (e.type) {
     case SDL_EVENT_QUIT: return true;
+    case SDL_EVENT_DISPLAY_ADDED:
+    case SDL_EVENT_DISPLAY_REMOVED:
+    case SDL_EVENT_DISPLAY_MOVED:
+    case SDL_EVENT_DISPLAY_ORIENTATION:
+        find_monitors();
+        return false;
     case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
     case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
     case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: {
