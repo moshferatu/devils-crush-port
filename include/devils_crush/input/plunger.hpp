@@ -111,8 +111,8 @@ struct PlungerSample {
 
 // Which controller the plunger is, and how it is read. Held as a name and an
 // axis index rather than an SDL instance ID because it is written down in
-// `cabinet.ini` and has to survive the controller being unplugged, renumbered
-// by Windows, or plugged into a different socket.
+// `devils-crush.ini` and has to survive the controller being unplugged,
+// renumbered by Windows, or plugged into a different socket.
 struct PlungerBinding {
     // Matched against the controller's name as a case-insensitive substring.
     // Empty matches the first controller with the axis, which is the ordinary

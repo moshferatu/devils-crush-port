@@ -58,9 +58,9 @@ struct WindowPlacement {
 };
 
 // The eight PC Engine pad inputs, in the order they are written to
-// `cabinet.ini`. These are pad inputs rather than game actions on purpose:
-// the cartridge decides what each one does, and it does not do the same thing
-// in a menu as it does in play.
+// `devils-crush.ini`. These are pad inputs rather than game actions on
+// purpose: the cartridge decides what each one does, and it does not do the
+// same thing in a menu as it does in play.
 //
 // During play `01:D466` gates each flipper piece on `$3B80,X`. The left-side
 // pieces `$04/$06/$08` carry mask `$F0`, so *any* direction works the left

@@ -4,6 +4,7 @@
 #include "devils_crush/audio/music_voice_overlay.hpp"
 #include "devils_crush/core/atomic_file.hpp"
 #include "devils_crush/core/backup_ram.hpp"
+#include "devils_crush/core/data_files.hpp"
 #include "devils_crush/core/high_score_table.hpp"
 #include "devils_crush/cpu/huc6280_idle_skip.hpp"
 #include "devils_crush/cabinet/cabinet_state.hpp"
@@ -8901,7 +8902,7 @@ void test_cabinet_display_config()
         const auto chosen_encoded = encode_display_config(chosen);
         const auto chosen_decoded = decode_display_config(chosen_encoded);
         check(chosen_decoded && chosen_decoded->play == chosen.play,
-            "the player's settings round trip through cabinet.ini");
+            "the player's settings round trip through devils-crush.ini");
         std::string chosen_text;
         for (const auto value : chosen_encoded) {
             chosen_text.push_back(
@@ -10562,6 +10563,50 @@ void test_atomic_commit()
     check(
         std::filesystem::remove(destination, error) && !error,
         "commit test file is removed");
+}
+
+void test_legacy_data_migration()
+{
+    namespace fs = std::filesystem;
+    const auto base = fs::current_path() / "dc-data-migration-test";
+    std::error_code error;
+    fs::remove_all(base, error);
+    const auto write = [](const fs::path& path, const char* text) {
+        std::ofstream(path, std::ios::binary) << text;
+    };
+    const auto read = [](const fs::path& path) {
+        std::ifstream input(path, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(input), {});
+    };
+
+    fs::create_directories(base / "portable-data");
+    write(base / "portable-data" / "cabinet.ini", "settings");
+    write(base / "portable-data" / "devils-crush.sav", "save");
+    write(base / "portable-data" / "devils-crush.hiscore", "scores");
+    auto result = devils_crush::core::migrate_legacy_data_folder(base);
+    check(result.moved.size() == 3U && result.problems.empty()
+            && read(base / "devils-crush.ini") == "settings"
+            && read(base / "devils-crush.sav") == "save"
+            && read(base / "devils-crush.hiscore") == "scores",
+        "an earlier build's settings and saves move out of portable-data");
+    check(!fs::exists(base / "portable-data"),
+        "the emptied portable-data folder is removed");
+    result = devils_crush::core::migrate_legacy_data_folder(base);
+    check(result.moved.empty() && result.problems.empty(),
+        "migrating again without the folder does nothing");
+
+    // A file at the new name was written by a build that has already moved,
+    // so it wins, and the old one and its folder stay for the player to see.
+    fs::create_directories(base / "portable-data");
+    write(base / "portable-data" / "cabinet.ini", "older");
+    write(base / "portable-data" / "notes.txt", "mine");
+    result = devils_crush::core::migrate_legacy_data_folder(base);
+    check(result.moved.empty() && result.problems.size() == 1U
+            && read(base / "devils-crush.ini") == "settings"
+            && fs::exists(base / "portable-data" / "cabinet.ini")
+            && fs::exists(base / "portable-data" / "notes.txt"),
+        "a newer file is never replaced, and other files stay");
+    fs::remove_all(base, error);
 }
 
 void test_high_score_table()
@@ -22008,6 +22053,7 @@ int main()
     test_routine_replay_corpus();
     test_backup_ram_storage();
     test_atomic_commit();
+    test_legacy_data_migration();
     test_high_score_table();
     test_idle_skip();
     test_pce_pad();

@@ -7,7 +7,7 @@ Last validated: 2026-07-24
 The Release host passed a visible, cross-process validation of the game's
 native save and Data Load flow. The test used the supported USA ROM and the
 pinned Beetle PCE core in an isolated working directory, so the normal
-`portable-data/devils-crush.sav` was not read or modified.
+`devils-crush.sav` was not read or modified.
 
 The first process:
 
@@ -18,7 +18,7 @@ The first process:
 4. Saved the current game into slot 1.
 5. Exited cleanly so the host could atomically flush backup RAM.
 
-The resulting `portable-data/devils-crush.sav` was exactly 2,048 bytes and
+The resulting `devils-crush.sav` was exactly 2,048 bytes and
 had SHA-256
 `42def247b77a32ff8121c43291155049e5b472293c1cd61ea9b7b9244985d39c`.
 
@@ -34,7 +34,7 @@ under ignored `out/` storage and are not distributable project artifacts.
 
 ## Repeating the Check
 
-Use a fresh working directory containing no `portable-data` folder, then
+Use a fresh working directory containing no `devils-crush.sav`, then
 launch the Release executable with an absolute ROM path:
 
 ```powershell
@@ -45,7 +45,7 @@ Follow the save sequence described in the
 [official USA manual](https://www.tg-16.com/contributors/bernie/Devil%27s_Crush/Devil%27s_Crush.pdf):
 start a new game, pause, use Select to open High Scores, press Button I to
 open the password/save screen, then press Button I on an unused slot. Exit
-the host, confirm `portable-data/devils-crush.sav` is exactly 2,048 bytes,
+the host, confirm `devils-crush.sav` is exactly 2,048 bytes,
 restart from the same directory, choose Data Load, and load the saved slot.
 
 For an automated byte-for-byte persistence check, use the

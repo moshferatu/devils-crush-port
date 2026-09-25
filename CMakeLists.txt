@@ -107,6 +107,7 @@ add_library(
     src/cabinet/music_transition.cpp
     src/core/atomic_file.cpp
     src/core/backup_ram.cpp
+    src/core/data_files.cpp
     src/core/high_score_table.cpp
     src/cpu/huc6280_idle_skip.cpp
     src/cpu/huc6280_interrupt_boundary.cpp
@@ -330,7 +331,7 @@ if(DC_BUILD_APP)
     target_compile_features(dc_launcher_art PRIVATE cxx_std_20)
     dc_enable_strict_warnings(dc_launcher_art)
 
-    # The launcher (src/launcher/launcher.cpp): portable-data/cabinet.ini with
+    # The launcher (src/launcher/launcher.cpp): devils-crush.ini with
     # a face on it, and a Play button. It ships beside devils-crush.exe and
     # starts it. SDL as the game is, the game's own reading and writing of the
     # file, and stb_truetype to draw the system's font.

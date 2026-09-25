@@ -332,9 +332,9 @@ void append_bindings(std::string& output, const InputBindings& input)
 // existed, or one that names only the inputs its author cared about, still
 // produces a playable pad.
 //
-// Note that the host rewrites `cabinet.ini` in full on exit, so once a file
-// has been written every field is present and pinned. Changing a default in
-// code will not reach an existing file: that file has to be edited, or its
+// Note that the host rewrites `devils-crush.ini` in full on exit, so once a
+// file has been written every field is present and pinned. Changing a default
+// in code will not reach an existing file: that file has to be edited, or its
 // `input.` lines deleted so the defaults apply again.
 [[nodiscard]] bool parse_bindings(
     const std::map<std::string, std::string, std::less<>>& fields,

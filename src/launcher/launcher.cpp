@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// devils-crush-launcher: `portable-data/cabinet.ini` with a face on it, and a
+// devils-crush-launcher: `devils-crush.ini` with a face on it, and a
 // Play button.
 //
 // Everything here is a setting the file already has (`DisplayConfig`, in
@@ -12,11 +12,13 @@
 //
 // ## The file
 //
-// `portable-data/cabinet.ini` beside the launcher, which is where the game
-// looks when it is started from beside it. Read and written with the game's
-// own `decode_display_config` and `save_display_config_atomic`, so the
-// launcher cannot write a file the game would refuse; the parts it does not
-// show -- which monitor each window is on, and where -- go back as they came.
+// `devils-crush.ini` beside the launcher, which is where the game looks when
+// it is started from beside it. Read and written with the game's own
+// `decode_display_config` and `save_display_config_atomic`, so the launcher
+// cannot write a file the game would refuse; the parts it does not show --
+// where on its monitor each window is -- go back as they came. Settings and
+// saves an earlier build kept in `portable-data`, with the settings as
+// `cabinet.ini`, are moved out first (`migrate_legacy_data_folder`).
 // A file the game cannot read is shown as the defaults, as the game would
 // play it, and a save replaces it. Nothing is written until Save or Play.
 //
@@ -58,6 +60,7 @@
 // time the launcher builds without an icon, and its heading is text.
 
 #include "devils_crush/cabinet/display_config.hpp"
+#include "devils_crush/core/data_files.hpp"
 #include "devils_crush/core/rom_image.hpp"
 
 #include <SDL3/SDL.h>
@@ -108,7 +111,7 @@ using devils_crush::cabinet::kPadButtonCount;
 constexpr const char* kTitle = "Devil's Crush";
 constexpr const wchar_t* kGameExe = L"devils-crush.exe";
 constexpr const char* kRomDefault = "Devil's Crush.pce";
-const std::filesystem::path kConfigRelative = std::filesystem::path("portable-data") / "cabinet.ini";
+const std::filesystem::path kConfigRelative = devils_crush::core::kConfigFileName;
 constexpr std::size_t kKeysMax = 4;
 
 // --- text and paths --------------------------------------------------------
@@ -1137,7 +1140,7 @@ void capture_key(SDL_Scancode sc)
     ui.capturing = false;
     const char* name = SDL_GetScancodeName(sc);
     if (name == nullptr || *name == '\0' || SDL_GetScancodeFromName(name) != sc) {
-        say(true, "That key has no name cabinet.ini can hold.");
+        say(true, "That key has no name devils-crush.ini can hold.");
         return;
     }
     auto& list = keys_of(ui.cfg, r->id);
@@ -2206,7 +2209,15 @@ int main(int argc, char* argv[])
     }
     find_base();
     build_rows();
+    // Before the file is read, or Save would write a fresh one over the
+    // settings an earlier build left in its subfolder.
+    const auto migration = devils_crush::core::migrate_legacy_data_folder(ui.base);
     load();
+    if (!migration.problems.empty()) {
+        say(true, "Could not move %s", migration.problems.front().c_str());
+    } else if (!migration.moved.empty()) {
+        say(false, "Moved the settings and saves out of portable-data, next to the launcher.");
+    }
     ui.focus = first_row();
 
     ui.ttf[0] = load_font(false);

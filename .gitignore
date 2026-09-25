@@ -28,6 +28,14 @@ CMakeUserPresets.json
 .DS_Store
 Thumbs.db
 
-# Runtime-local files
+# Runtime-local files: settings and saves, and what diagnostics write by
+# default, all in the folder the game runs from
 /logs/
 /portable-data/
+/devils-crush.ini
+/gamecontrollerdb.txt
+/*.tmp
+/*.csv
+/*.log
+/*.hiscore
+/*.sav

@@ -9,6 +9,7 @@
 #include "devils_crush/cabinet/dmd_panel.hpp"
 #include "devils_crush/cabinet/music_transition.hpp"
 #include "devils_crush/core/atomic_file.hpp"
+#include "devils_crush/core/data_files.hpp"
 #include "devils_crush/core/high_score_table.hpp"
 #include "devils_crush/core/rom_image.hpp"
 #include "devils_crush/core/save_state.hpp"
@@ -116,87 +117,87 @@ constexpr int kGameplayRadialRecordingFrames = 3600;
 constexpr int kStateCensusRecordingFrames = 3600;
 constexpr int kMaximumAudioLatencyMilliseconds = 150;
 const std::filesystem::path kBackupRamPath =
-    std::filesystem::path("portable-data") / "devils-crush.sav";
+    std::filesystem::path(devils_crush::core::kBackupRamFileName);
 const std::filesystem::path kQuickStatePath =
-    std::filesystem::path("portable-data") / "devils-crush.state";
+    std::filesystem::path(devils_crush::core::kQuickStateFileName);
 const std::filesystem::path kGamepadMappingsPath =
-    std::filesystem::path("portable-data") / "gamecontrollerdb.txt";
+    std::filesystem::path(devils_crush::core::kGamepadMappingsFileName);
 const std::filesystem::path kCabinetConfigPath =
-    std::filesystem::path("portable-data") / "cabinet.ini";
+    std::filesystem::path(devils_crush::core::kConfigFileName);
 const std::filesystem::path kCanonicalRecordingPath =
-    std::filesystem::path("portable-data") / "canonical-v1.csv";
+    std::filesystem::path("canonical-v1.csv");
 const std::filesystem::path kGameplayRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-v1.csv";
+    std::filesystem::path("gameplay-v1.csv");
 const std::filesystem::path kGameplayAlternateRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-alternate-v1.csv";
+    std::filesystem::path("gameplay-alternate-v1.csv");
 const std::filesystem::path kGameplaySweepRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-sweep-v1.csv";
+    std::filesystem::path("gameplay-sweep-v1.csv");
 const std::filesystem::path kGameplayCrossfireRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-crossfire-v1.csv";
+    std::filesystem::path("gameplay-crossfire-v1.csv");
 const std::filesystem::path kGameplayOrbitRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-orbit-v1.csv";
+    std::filesystem::path("gameplay-orbit-v1.csv");
 const std::filesystem::path kGameplayLanesRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-lanes-v1.csv";
+    std::filesystem::path("gameplay-lanes-v1.csv");
 const std::filesystem::path kGameplayStaggerRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-stagger-v1.csv";
+    std::filesystem::path("gameplay-stagger-v1.csv");
 const std::filesystem::path kGameplayPulseRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-pulse-v1.csv";
+    std::filesystem::path("gameplay-pulse-v1.csv");
 const std::filesystem::path kGameplayRallyRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-rally-v1.csv";
+    std::filesystem::path("gameplay-rally-v1.csv");
 const std::filesystem::path kGameplaySlalomRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-slalom-v1.csv";
+    std::filesystem::path("gameplay-slalom-v1.csv");
 const std::filesystem::path kGameplayPendulumRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-pendulum-v1.csv";
+    std::filesystem::path("gameplay-pendulum-v1.csv");
 const std::filesystem::path kGameplayNudgeRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-nudge-v1.csv";
+    std::filesystem::path("gameplay-nudge-v1.csv");
 const std::filesystem::path kGameplaySwitchbackRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-switchback-v1.csv";
+    std::filesystem::path("gameplay-switchback-v1.csv");
 const std::filesystem::path kGameplaySpiralRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-spiral-v1.csv";
+    std::filesystem::path("gameplay-spiral-v1.csv");
 const std::filesystem::path kGameplayRicochetRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-ricochet-v1.csv";
+    std::filesystem::path("gameplay-ricochet-v1.csv");
 const std::filesystem::path kGameplayVolleyRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-volley-v1.csv";
+    std::filesystem::path("gameplay-volley-v1.csv");
 const std::filesystem::path kGameplayWhirlpoolRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-whirlpool-v1.csv";
+    std::filesystem::path("gameplay-whirlpool-v1.csv");
 const std::filesystem::path kGameplayCascadeRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-cascade-v1.csv";
+    std::filesystem::path("gameplay-cascade-v1.csv");
 const std::filesystem::path kGameplayHigharcRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-higharc-v1.csv";
+    std::filesystem::path("gameplay-higharc-v1.csv");
 const std::filesystem::path kGameplayTwistRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-twist-v1.csv";
+    std::filesystem::path("gameplay-twist-v1.csv");
 const std::filesystem::path kGameplaySidestepRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-sidestep-v1.csv";
+    std::filesystem::path("gameplay-sidestep-v1.csv");
 const std::filesystem::path kGameplayWeaveRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-weave-v1.csv";
+    std::filesystem::path("gameplay-weave-v1.csv");
 const std::filesystem::path kGameplayBankshotRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-bankshot-v1.csv";
+    std::filesystem::path("gameplay-bankshot-v1.csv");
 const std::filesystem::path kGameplayPlayfieldRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-playfield-v1.csv";
+    std::filesystem::path("gameplay-playfield-v1.csv");
 const std::filesystem::path kGameplayCornerRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-corner-v1.csv";
+    std::filesystem::path("gameplay-corner-v1.csv");
 const std::filesystem::path kGameplayAlleyRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-alley-v1.csv";
+    std::filesystem::path("gameplay-alley-v1.csv");
 const std::filesystem::path kGameplayReboundRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-rebound-v1.csv";
+    std::filesystem::path("gameplay-rebound-v1.csv");
 const std::filesystem::path kGameplaySkewRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-skew-v1.csv";
+    std::filesystem::path("gameplay-skew-v1.csv");
 const std::filesystem::path kGameplayHelixRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-helix-v1.csv";
+    std::filesystem::path("gameplay-helix-v1.csv");
 const std::filesystem::path kGameplayVectorRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-vector-v1.csv";
+    std::filesystem::path("gameplay-vector-v1.csv");
 const std::filesystem::path kGameplayRadialRecordingPath =
-    std::filesystem::path("portable-data") / "gameplay-radial-v1.csv";
+    std::filesystem::path("gameplay-radial-v1.csv");
 const std::filesystem::path kStateCensusRecordingPath =
-    std::filesystem::path("portable-data") / "state-census-v1.csv";
+    std::filesystem::path("state-census-v1.csv");
 const std::filesystem::path kBackupRamTestPath =
-    std::filesystem::path("portable-data") / "backup-ram-test.sav";
+    std::filesystem::path("backup-ram-test.sav");
 const std::filesystem::path kHighScorePath =
-    std::filesystem::path("portable-data") / "devils-crush.hiscore";
+    std::filesystem::path(devils_crush::core::kHighScoreFileName);
 // Somewhere for --high-score-check to write, so it can prove the save half
 // without ever touching the table a player has actually earned.
 const std::filesystem::path kHighScoreCheckPath =
-    std::filesystem::path("portable-data") / "high-score-check.hiscore";
+    std::filesystem::path("high-score-check.hiscore");
 constexpr std::uintmax_t kMaximumSaveStateFileSize =
     64U * 1024U * 1024U + 4096U;
 constexpr std::uintmax_t kMaximumRoutineReplayCorpusFileSize =
@@ -5432,7 +5433,7 @@ parse_logical_address_range(const std::string_view text)
     // Default enhancements belong to normal play. Keep diagnostic recordings
     // and reference-device comparisons reproducible unless explicitly enabled.
     const bool play_selected = host_selected && !options.cabinet_smoke_test;
-    // Normal play also takes what the flags leave unsaid from cabinet.ini,
+    // Normal play also takes what the flags leave unsaid from devils-crush.ini,
     // where the launcher keeps it. A file that cannot be read is reported by
     // the host when it loads the file again, and plays with the defaults.
     devils_crush::cabinet::PlaySettings play;
@@ -9748,8 +9749,8 @@ void print_usage()
            "  are a device name, an axis, and the axis values the rod rests\n"
            "  and bottoms out at. --cabinet-plunger-probe watches every\n"
            "  controller while you pull the rod and prints those four\n"
-           "  numbers ready to paste into portable-data/cabinet.ini. There\n"
-           "  is no plunger until one is named, because a plunger and a\n"
+           "  numbers ready to paste into devils-crush.ini. There is no\n"
+           "  plunger until one is named, because a plunger and a\n"
            "  thumbstick look identical from here and axis 2 on an\n"
            "  ordinary gamepad is the right stick; the endpoints default\n"
            "  to a Cleveland Software Design PinOne's, which puts its\n"
@@ -9764,14 +9765,14 @@ void print_usage()
         << "Nudge strength: --nudge-multiplier <factor>\n"
            "  Scale the original nudge impulse (0-16, default 1; e.g. 2.5).\n"
            "  Applies to keyboard, gamepad and PinOne nudges.\n\n"
-        << "Settings (portable-data/cabinet.ini, which the launcher edits):\n"
+        << "Settings (devils-crush.ini, which the launcher edits):\n"
            "  game.rom, game.cabinet, game.bonus_stage, game.native,\n"
            "  audio.music_voice_overlay, video.smoothing and\n"
            "  input.nudge_multiplier set normal play's defaults for --rom,\n"
            "  --no-cabinet, --bonus-stage, --emulate-only,\n"
            "  --no-music-voice-overlay, F6 and --nudge-multiplier. A flag\n"
            "  beats the file for that run.\n\n"
-        << "Saved data (all under portable-data/):\n"
+        << "Saved data (in the folder the game is started from):\n"
         << "  devils-crush.sav      The cartridge's backup RAM, holding the\n"
            "                        five numbered save slots the game writes\n"
            "                        when a player uses its own save screen.\n"
@@ -9782,7 +9783,11 @@ void print_usage()
            "                        nothing here has to be saved\n"
            "                        deliberately. Delete the file to go back\n"
            "                        to the ROM's own five 1,000,000-point\n"
-           "                        AAA entries.\n\n"
+           "                        AAA entries.\n"
+           "  devils-crush.state    The F5 quick state.\n"
+           "  An earlier build kept these, and devils-crush.ini as\n"
+           "  cabinet.ini, in a portable-data folder; they are moved out of\n"
+           "  it on the first start.\n\n"
         << "Native code:\n"
         << "  The interactive host deploys every admitted native routine by\n"
            "  default and reports its share of the session on exit. Pass\n"
@@ -9849,7 +9854,7 @@ void print_usage()
            "  --replay-session <inputs.csv> re-runs a pad-only capture through\n"
            "  the recording and trace options, checks each saved work-RAM hash,\n"
            "  and writes replay.csv beside it.\n\n"
-        << "Controls (defaults; see input.* in portable-data/cabinet.ini):\n"
+        << "Controls (defaults; see input.* in devils-crush.ini):\n"
         << "  Left Shift / Left    Left flipper (PCE d-pad left)\n"
         << "  Right / Right Shift  Right flipper (PCE d-pad right)\n"
         << "  Enter                Launch in the shooter; otherwise start,\n"
@@ -10028,7 +10033,9 @@ void print_validation(const devils_crush::rom::ValidationResult& result)
     }
 
     std::error_code error;
-    std::filesystem::create_directories(path.parent_path(), error);
+    if (!path.parent_path().empty()) {
+        std::filesystem::create_directories(path.parent_path(), error);
+    }
     if (error) {
         std::cerr << "Could not create save directory: " << error.message()
                   << '\n';
@@ -12020,7 +12027,7 @@ struct ProbedAxis {
     std::cout << "The plunger is axis " << moved->axis << " of \""
               << moved->name << "\", resting at " << moved->rest
               << " and reaching " << moved->extreme << ".\n\n"
-              << "Put this in portable-data/cabinet.ini:\n\n"
+              << "Put this in devils-crush.ini:\n\n"
               << "input.plunger.device=" << moved->name << '\n'
               << "input.plunger.axis=" << moved->axis << '\n'
               << "input.plunger.rest=" << moved->rest << '\n'
@@ -20229,8 +20236,8 @@ void restore_flipper_input(
 // exists on a PC, so the ranked columns travel with the machine instead.
 //
 // The file is the host's, not the cartridge's: it sits beside the backup RAM
-// in `portable-data` and leaves all five original save slots for the games
-// they were meant for.
+// in the working directory and leaves all five original save slots for the
+// games they were meant for.
 struct HighScoreAutosave {
     std::filesystem::path path;
     // What the file held when the host started, or nothing if there was no
@@ -25449,6 +25456,16 @@ int run_side_gate_deadline_check_semantic_fixture()
 
 int main(const int argc, char* argv[])
 {
+    // Before anything is read: the options take normal play's settings from
+    // devils-crush.ini, which an earlier build kept in a subfolder.
+    const auto migration =
+        devils_crush::core::migrate_legacy_data_folder({});
+    for (const auto& moved : migration.moved) {
+        std::cout << "Moved " << moved << '\n';
+    }
+    for (const auto& problem : migration.problems) {
+        std::cerr << "Could not move " << problem << '\n';
+    }
     auto options = parse_command_line(argc, argv);
     if (!options.error.empty()) {
         std::cerr << options.error << "\n\n";

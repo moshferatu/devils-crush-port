@@ -24,7 +24,7 @@ ROM files and locally derived assets are ignored by `git` and are not distribute
 ## Launcher
 
 `devils-crush-launcher.exe` sits beside the game and is the easy way to set it
-up: `portable-data/cabinet.ini` a tab at a time, and a Play button that saves
+up: `devils-crush.ini` a tab at a time, and a Play button that saves
 and starts the game, then comes back when the game closes.
 
 | Tab | |
@@ -60,7 +60,7 @@ On a virtual pinball cabinet, across three screens (the default):
 devils-crush.exe --rom "D:\path\to\Devil's Crush.pce"
 ```
 
-With no options the game plays as `portable-data/cabinet.ini` says, which is
+With no options the game plays as `devils-crush.ini` says, which is
 what the launcher edits: `game.rom`, `game.cabinet`, `game.bonus_stage`,
 `game.native`, `audio.music_voice_overlay`, `video.smoothing` and
 `input.nudge_multiplier`. An option on the command line beats the file for
@@ -85,7 +85,7 @@ devils-crush.exe --bonus-stage 3 --rom "D:\path\to\Devil's Crush.pce"
 | F5 / F9 | Save and restore a quick state |
 | F6 | Toggle playfield motion/artwork smoothing on high-refresh displays |
 | R / Shift+R | Rotate the main playfield clockwise / counterclockwise by 90° |
-| F10 | Reload `portable-data/gamecontrollerdb.txt` after editing it |
+| F10 | Reload `gamecontrollerdb.txt` after editing it |
 | F11 | Toggle playfield borderless fullscreen |
 | F12 | Open cabinet display assignment |
 | Escape | Quit (outside the display assignment screen) |
@@ -102,8 +102,8 @@ The flag `--emulate-only` can be used to execute the original assembly instead, 
 | X | Nudge |
 
 The first available SDL gamepad works too, and extra mappings can be supplied
-in `portable-data/gamecontrollerdb.txt`. Keys are rebindable under `input.` in
-`portable-data/cabinet.ini`, and which pad inputs work each flipper is
+in `gamecontrollerdb.txt`. Keys are rebindable under `input.` in
+`devils-crush.ini`, and which pad inputs work each flipper is
 configurable as well — see
 [docs/CABINET_PREVIEW.md](docs/CABINET_PREVIEW.md#controls) for the full
 mapping.
@@ -113,7 +113,7 @@ mapping.
 A cabinet's plunger is supported as one axis of an ordinary game controller, so
 any board that reports one works. The settings are a device name, an axis, and
 the two axis values the rod rests and bottoms out at, all under
-`input.plunger.` in `cabinet.ini`. Run the probe, pull the rod a few times, and
+`input.plunger.` in `devils-crush.ini`. Run the probe, pull the rod a few times, and
 it prints the four numbers ready to paste in:
 
 ```powershell
@@ -172,15 +172,22 @@ for what the folder contains and how runtime state is kept per-machine.
 
 ## Saved data
 
-Everything the host keeps between runs lives in `portable-data/` beside the
-executable:
+Everything the host keeps between runs lives in the folder the game is started
+from, which is the executable's own when it is opened from Explorer or through
+the launcher. A front end that starts it from somewhere else should set its
+working directory (its "Start in") to the game's folder.
 
 | File | What it holds |
 | --- | --- |
 | `devils-crush.sav` | The cartridge's backup RAM, including the five numbered save slots the game writes from its own save screen |
 | `devils-crush.hiscore` | The high-score table |
 | `devils-crush.state` | The F5/F9 quick state |
-| `cabinet.ini` | The launcher's settings, display assignment, key bindings, and plunger calibration |
+| `devils-crush.ini` | The launcher's settings, display assignment, key bindings, and plunger calibration |
+| `gamecontrollerdb.txt` | Your own controller mappings, if you add any |
+
+Earlier builds kept these in a `portable-data` subfolder, with the settings
+named `cabinet.ini`. The game and the launcher move them out on first start,
+and remove the folder if nothing else is left in it.
 
 High scores save themselves. The cartridge only ever kept its table by spending
 one of five save slots on it by hand — pause, Select for High Scores, Button I,

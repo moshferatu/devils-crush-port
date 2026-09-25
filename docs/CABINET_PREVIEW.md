@@ -8,7 +8,7 @@ Press R in the main window to rotate the playfield clockwise by 90 degrees;
 Shift+R rotates counterclockwise. The entire presentation rotates, including
 smoothed sprites, title screens, and bonus stages anchored at the table's foot.
 The DMD and backglass keep their orientation. Cabinet sessions save this as
-`playfield.artwork_rotation` in `portable-data/cabinet.ini` on normal exit;
+`playfield.artwork_rotation` in `devils-crush.ini` on normal exit;
 older configurations default to zero. This is separate from the saved monitor
 orientation. R also works for the base single-window view during the session.
 
@@ -17,7 +17,7 @@ for the base single-window view; `--cabinet` remains an explicit enable flag.
 Music voice overlay also defaults to on during play; disable it with
 `--no-music-voice-overlay`. Both defaults, and the ROM, the starting bonus
 stage, native or emulated code, smoothing and the nudge multiplier, can be set
-in `cabinet.ini` instead (`game.*`, `audio.music_voice_overlay`,
+in `devils-crush.ini` instead (`game.*`, `audio.music_voice_overlay`,
 `video.smoothing`, `input.nudge_multiplier`), which is what the launcher
 edits; a flag beats the file for one run. F6 toggles `video.smoothing`, and a
 cabinet session saves it on normal exit like the rotation. Cabinet mode creates
@@ -469,7 +469,7 @@ input.nudge.release=8
 input.nudge.cooldown_ms=250
 ```
 
-These settings are saved in `portable-data/cabinet.ini`. Threshold and release
+These settings are saved in `devils-crush.ini`. Threshold and release
 are percentages of signed joystick full scale; lower `threshold` for a lighter
 bump. Either axis, in either direction, produces a 50 ms button pulse. Before
 another pulse, both axes must settle below `release` for 100 ms and the cooldown
@@ -616,7 +616,7 @@ probe.
 `--cabinet-plunger-probe` supplies all four. It watches every connected
 controller, takes two seconds of stillness as the rest position, then watches
 somebody pull the rod and prints the axis that moved furthest as a block ready
-to paste into `cabinet.ini`.
+to paste into `devils-crush.ini`.
 
 #### Letting go is a speed
 
@@ -744,7 +744,7 @@ involved in the behaviour.
 
 ### Rebinding
 
-Bindings live in `portable-data/cabinet.ini` under `input.`, one line per pad
+Bindings live in `devils-crush.ini` under `input.`, one line per pad
 input, holding a comma-separated list of SDL key names:
 
 ```ini
@@ -783,7 +783,7 @@ The gamepad keeps a fixed layout — south and east for buttons I and II, the
 hat for directions — since only the keyboard has to match whatever a
 cabinet's encoder is wired to send.
 
-`cabinet.ini` is rewritten in full on exit and after display assignment, so
+`devils-crush.ini` is rewritten in full on exit and after display assignment, so
 the bindings are a stored field rather than a passthrough: an existing file
 without them gains the section the first time the host exits normally.
 
@@ -805,7 +805,7 @@ so, which left the right flipper button launching the ball — button I charges
 the Devil Shooter — well after the code had removed it from that role. The
 binding was correct; the file was old.
 
-To pick up changed defaults, delete the `input.` lines from `cabinet.ini`.
+To pick up changed defaults, delete the `input.` lines from `devils-crush.ini`.
 They are rewritten from the defaults on the next exit, and the window
 placements above them are untouched.
 
@@ -859,7 +859,7 @@ titles carry the controls:
 - Delete clears the selected static backglass fallback.
 - Enter, Escape, or F12 saves the assignments and resumes emulation.
 
-The host atomically stores `portable-data/cabinet.ini` after assignment and
+The host atomically stores `devils-crush.ini` after assignment and
 on normal exit. Each role records the SDL display name, a fallback window
 rectangle, the display's current orientation, and fullscreen state. Startup
 matches the exact display name first. If that display is absent, it chooses
@@ -878,7 +878,7 @@ is the fallback when it cannot be decoded or rendered; closing or losing that
 window still does not affect emulation.
 
 A user-supplied backglass image was supported for a while — a `backglass.path`
-field in `cabinet.ini`, a `--backglass <image>` switch, and a file picker on
+field in `devils-crush.ini`, a `--backglass <image>` switch, and a file picker on
 the F12 screen — and has been removed along with the SDL_image dependency that
 decoded it. A configuration file still naming an image loads normally: an
 unknown field is ignored, and the line disappears the next time the file is
@@ -1382,7 +1382,7 @@ five 48-byte records each. Spending one of five slots, by hand, to keep a
 score table was a reasonable trade against a HuCard's two kilobytes of
 battery-backed RAM. It is not a trade a PC has to make.
 
-So the host keeps the table itself. `portable-data/devils-crush.hiscore` holds
+So the host keeps the table itself. `devils-crush.hiscore` holds
 the thirty ranked bytes behind a magic, a format byte and a rank count; it is
 written atomically whenever the table changes and read back at boot. The
 restore hangs on `01:C10E`, the instruction after the boot-time transfer,
@@ -1466,17 +1466,22 @@ untouched.
 ### Runtime state is per-machine
 
 Every path the host reads or writes at run time is relative to the working
-directory: `portable-data/cabinet.ini`, `portable-data/devils-crush.sav`,
-`portable-data/devils-crush.hiscore`, `portable-data/devils-crush.state`. Run
-the executable from inside the staged folder and that directory is created
-there on first use.
+directory: `devils-crush.ini`, `devils-crush.sav`, `devils-crush.hiscore`,
+`devils-crush.state`, `gamecontrollerdb.txt`. Run the executable from inside
+the staged folder and they are written there, beside it. Earlier builds kept
+them in a `portable-data` subfolder, with the settings as `cabinet.ini`; the
+game and the launcher move them out on first start
+(`core::migrate_legacy_data_folder`), and remove the folder if that empties
+it.
 
 Syncing it back would be actively wrong. Display assignment records SDL display
 names and window rectangles for the machine that wrote it, so a workstation
 push would overwrite whatever the cabinet was configured with, and the
 cabinet's assignment would replace the workstation's on the next pull. The
-generated `.stignore` excludes `portable-data`, `logs`, and `captures`, so each
-machine keeps its own display layout, high scores, and quick states.
+generated `.stignore` excludes those files (with the `.tmp` each is written
+through), `portable-data`, `logs`, and `captures`, so each machine keeps its
+own display layout, high scores, and quick states. Syncthing does not sync
+`.stignore` itself: the cabinet's copy needs the same patterns.
 
 That also means display assignment is a one-time step on the cabinet itself:
 launch with `--cabinet`, press F12, and assign the playfield, DMD, and

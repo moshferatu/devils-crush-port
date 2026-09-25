@@ -15,7 +15,7 @@ Mesen2 comparison:
 
 ```powershell
 .\out\build\windows-vs2022\Debug\devils-crush.exe `
-  --record-canonical portable-data\canonical-v1.csv `
+  --record-canonical canonical-v1.csv `
   --rom "D:\path\to\Devil's Crush.pce"
 ```
 
@@ -30,7 +30,7 @@ table, launching the ball, operating both flippers, and applying four nudges:
 
 ```powershell
 .\out\build\windows-vs2022\Debug\devils-crush.exe `
-  --record-gameplay portable-data\gameplay-v1.csv `
+  --record-gameplay gameplay-v1.csv `
   --rom "D:\path\to\Devil's Crush.pce"
 ```
 
@@ -47,7 +47,7 @@ of remaining in the launch lane:
 
 ```powershell
 .\out\build\windows-vs2022\Release\devils-crush.exe `
-  --record-state-census portable-data\state-census-v1.csv `
+  --record-state-census state-census-v1.csv `
   --observe-hook 00:F43D `
   --routine-trace out\traces\state-census-camera-entries.csv `
   --routine-call-trace out\traces\state-census-camera-calls.csv `
@@ -67,7 +67,7 @@ The nested actor-slot activation boundary can be recorded independently:
 
 ```powershell
 .\out\build\windows-vs2022\Release\devils-crush.exe `
-  --record-state-census portable-data\state-census-actors.csv `
+  --record-state-census state-census-actors.csv `
   --observe-hook 00:F4FC `
   --replace-hook 00:F4FC@all `
   --routine-trace out\traces\state-census-actor-entries.csv `
@@ -96,7 +96,7 @@ Actor layout and live dispatch ownership use a smaller global write census:
 
 ```powershell
 .\out\build\windows-vs2022\Release\devils-crush.exe `
-  --record-state-census portable-data\state-census-actor-layout.csv `
+  --record-state-census state-census-actor-layout.csv `
   --work-ram-write-range 3000-307F `
   --work-ram-write-range 3F00-3FFF `
   --work-ram-write-trace out\traces\state-census-actor-layout-writes.csv `
@@ -112,7 +112,7 @@ The normal-table scene layout can also be bounded as one cross-frame call:
 
 ```powershell
 .\out\build\windows-vs2022\Release\devils-crush.exe `
-  --record-state-census portable-data\state-census-scene-layout.csv `
+  --record-state-census state-census-scene-layout.csv `
   --observe-hook 02:4088 `
   --routine-trace out\traces\state-census-scene-layout-entries.csv `
   --routine-call-trace out\traces\state-census-scene-layout-calls.csv `
@@ -128,7 +128,7 @@ The active game-to-audio command boundary is a compact replayable scope:
 
 ```powershell
 .\out\build\windows-vs2022\Release\devils-crush.exe `
-  --record-state-census portable-data\state-census-audio-command.csv `
+  --record-state-census state-census-audio-command.csv `
   --observe-hook 00:ED18 `
   --routine-trace out\traces\state-census-audio-command-entries.csv `
   --routine-call-trace out\traces\state-census-audio-command-calls.csv `
@@ -153,7 +153,7 @@ are reached while generating the same golden recording:
 
 ```powershell
 .\out\build\windows-vs2022\Debug\devils-crush.exe `
-  --record-canonical portable-data\canonical-hooked.csv `
+  --record-canonical canonical-hooked.csv `
   --pass-through-hook 00:E462 `
   --rom "D:\path\to\Devil's Crush.pce"
 ```
@@ -163,7 +163,7 @@ the frame, core master-cycle timestamp, A/X/Y/SP/status, and all eight MPRs:
 
 ```powershell
 .\out\build\windows-vs2022\Debug\devils-crush.exe `
-  --record-canonical portable-data\canonical-observed.csv `
+  --record-canonical canonical-observed.csv `
   --observe-hook 00:E462 `
   --routine-trace out\traces\routine-00-E462.csv `
   --rom "D:\path\to\Devil's Crush.pce"
@@ -180,7 +180,7 @@ instruction order across all selected routines:
 
 ```powershell
 .\out\build\windows-vs2022\Debug\devils-crush.exe `
-  --record-canonical portable-data\canonical-mapped.csv `
+  --record-canonical canonical-mapped.csv `
   --observe-hook 00:E195 `
   --observe-hook 08:5977 `
   --observe-hook 08:59B5 `
@@ -199,7 +199,7 @@ The gameplay route can be observed with the same registry:
 
 ```powershell
 .\out\build\windows-vs2022\Debug\devils-crush.exe `
-  --record-gameplay portable-data\gameplay-mapped.csv `
+  --record-gameplay gameplay-mapped.csv `
   --observe-hook 00:E195 `
   --observe-hook 01:C3CB `
   --observe-hook 01:C49E `
@@ -290,7 +290,7 @@ work-RAM offset, and value:
 
 ```powershell
 .\out\build\windows-vs2022\Release\devils-crush.exe `
-  --record-gameplay portable-data\gameplay-census.csv `
+  --record-gameplay gameplay-census.csv `
   --work-ram-write-range 0000-007F `
   --work-ram-write-range 2C00-2FFF `
   --work-ram-write-range 3000-3FFF `
@@ -305,7 +305,7 @@ embedded in the recording header:
 
 ```powershell
 .\out\build\windows-vs2022\Release\devils-crush.exe `
-  --record-state-census portable-data\state-census-seeded.csv `
+  --record-state-census state-census-seeded.csv `
   --work-ram-patch 3600:3FFF:A5 `
   --rom "D:\path\to\Devil's Crush.pce"
 ```
@@ -366,7 +366,7 @@ touching the normal `devils-crush.sav`:
 
 ```powershell
 .\out\build\windows-vs2022\Debug\devils-crush.exe `
-  --backup-ram-test portable-data\backup-ram-test.sav `
+  --backup-ram-test backup-ram-test.sav `
   --rom "D:\path\to\Devil's Crush.pce"
 ```
 

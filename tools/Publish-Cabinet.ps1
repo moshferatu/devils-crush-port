@@ -11,10 +11,11 @@
     links SDL3, Beetle PCE, and the Microsoft C runtime statically, so the
     cabinet needs no redistributable installed.
 
-    Runtime state -- settings, display assignment, backup RAM, quick states -- is
-    written to `portable-data/` beside the executable and is deliberately
-    excluded from the sync by the generated `.stignore`. Each machine keeps
-    its own display layout and high scores.
+    Runtime state -- settings and display assignment in `devils-crush.ini`,
+    backup RAM, quick states, high scores -- is written beside the executable
+    and is deliberately excluded from the sync by the generated `.stignore`.
+    Each machine keeps its own display layout and high scores. Syncthing does
+    not sync `.stignore` itself, so the other device needs the same patterns.
 #>
 
 [CmdletBinding()]
@@ -88,8 +89,15 @@ Copy-Item -LiteralPath $RomPath -Destination (Join-Path $destinationFull $romNam
 # cabinet's display assignment must not travel back to the workstation, and
 # the workstation's must not overwrite the cabinet's on the next push.
 $stignore = @"
-// Runtime state belongs to the machine that wrote it, not to the sync.
-// Display assignment, backup RAM, and quick states all live here.
+// Runtime state belongs to the machine that wrote it, not to the sync:
+// settings and display assignment, backup RAM, quick states, high scores,
+// controller mappings, and the temporaries each is written through. An
+// earlier build kept them in portable-data, which the game moves them out of.
+/devils-crush.ini*
+/devils-crush.sav*
+/devils-crush.state*
+/devils-crush.hiscore*
+/gamecontrollerdb.txt*
 /portable-data
 /logs
 /captures

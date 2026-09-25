@@ -3672,8 +3672,8 @@ cores; each test is single-threaded and needs a few hundred megabytes.
 Nothing in the suite *appears* to require serialisation: no test declares
 `RUN_SERIAL` or a resource lock, every `-DOUTPUT` path is distinct along with
 the trace paths derived from it, and the only fixed path any test writes
-(`portable-data/high-score-check.hiscore`) belongs to a single test. The
-recording routes never touch the rest of `portable-data` — backup RAM, the
+(`high-score-check.hiscore`) belongs to a single test. The
+recording routes never touch the rest of the saved data — backup RAM, the
 cabinet configuration and the high-score autosave are all reached from the
 interactive host only. Keep it that way: a new regression writing a shared
 path under a fixed name would reintroduce the need to run serially.
