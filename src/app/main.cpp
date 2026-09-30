@@ -30,6 +30,7 @@
 #include "devils_crush/render/table_palette_cache.hpp"
 #include "devils_crush/render/sharp_pixel_scaler.hpp"
 #include "devils_crush/render/title_logo.hpp"
+#include "devils_crush/render/viewport_motion.hpp"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -10270,6 +10271,21 @@ void destroy_source(SourceTexture& source)
 }
 
 #include "table_motion_sdl.hpp"
+
+// Bonus rooms are drawn as pieces only while one is on screen; everything else
+// the framebuffer shows keeps blending complete pictures.
+void update_bonus_room_motion(SDL_Renderer* renderer, PceRuntime& runtime,
+    const std::optional<devils_crush::cabinet::CabinetState>& state,
+    const FramebufferView& view, ViewportMotionPresenter& motion)
+{
+    const auto video = state && state->bonus_stage && state->screen_selector != 0U
+        ? runtime.export_video_memory() : std::nullopt;
+    if (!video) {
+        motion.reset();
+        return;
+    }
+    motion.update(renderer, *video, view);
+}
 
 struct StageTexture {
     SDL_Texture* texture = nullptr;
@@ -20599,6 +20615,7 @@ int run_windows_host(
     bool reported_table_view = false;
     TableMotionPresenter table_motion;
     FrameArtworkPresenter frame_artwork;
+    ViewportMotionPresenter viewport_motion;
     bool smoothing_enabled =
         presentation_check || cabinet_config.play.smoothing;
     bool motion_ready = false;
@@ -21096,6 +21113,7 @@ int run_windows_host(
             smoothing_enabled = !smoothing_enabled;
             table_motion.reset();
             frame_artwork.reset();
+            viewport_motion.reset();
             motion_ready = false;
         }
         claim_startup_focus(window, focus_claim);
@@ -21116,6 +21134,7 @@ int run_windows_host(
                 cabinet_config.play.smoothing = smoothing_enabled;
                 table_motion.reset();
                 frame_artwork.reset();
+                viewport_motion.reset();
                 motion_ready = false;
                 std::cout << "Playfield smoothing: "
                           << (smoothing_enabled ? "on" : "off")
@@ -21264,6 +21283,7 @@ int run_windows_host(
                 } else if (load_quick_state(runtime, kQuickStatePath)) {
                     table_motion.reset();
                     frame_artwork.reset();
+                    viewport_motion.reset();
                     motion_ready = false;
                     nudge.model.rearm();
                     if (audio.stream != nullptr
@@ -21321,6 +21341,7 @@ int run_windows_host(
                     destroy_source(source);
                     table_motion.reset();
                     frame_artwork.reset();
+                    viewport_motion.reset();
                     motion_ready = false;
                     next_frame_time = Clock::now();
                 } else if (
@@ -21353,6 +21374,7 @@ int run_windows_host(
         if (!smooth_table) {
             table_motion.reset();
             frame_artwork.reset();
+            viewport_motion.reset();
             motion_ready = false;
         }
         const bool nudge_focused = focused_window != nullptr
@@ -21433,6 +21455,7 @@ int run_windows_host(
                     const auto state = devils_crush::cabinet::decode_cabinet_state(runtime.export_work_ram());
                     host_ok = frame_artwork.update(renderer, frame.framebuffer,
                         state ? state->screen_selector + (state->bonus_stage ? 256 : 0) : 0);
+                    update_bonus_room_motion(renderer, runtime, state, frame.framebuffer, viewport_motion);
                 }
             } else if (
                 frame.frame_number == 0U
@@ -21475,6 +21498,7 @@ int run_windows_host(
                 if (hold_playfield) {
                     table_motion.reset();
                     frame_artwork.reset();
+                    viewport_motion.reset();
                     motion_ready = false;
                 }
                 if (!hold_playfield) {
@@ -21518,6 +21542,7 @@ int run_windows_host(
                         }
                         if (table) {
                             frame_artwork.reset();
+                            viewport_motion.reset();
                             if (smooth_table) {
                                 motion_ready = table_motion.update(renderer, std::move(motion_frame));
                                 if (!motion_ready) {
@@ -21549,6 +21574,8 @@ int run_windows_host(
                                 ? cabinet_state->screen_selector + (cabinet_state->bonus_stage ? 256 : 0)
                                 : (work_ram.size() > 0x54 ? std::to_integer<int>(work_ram[0x54]) : 0);
                             host_ok = frame_artwork.update(renderer, frame.framebuffer, scene);
+                            update_bonus_room_motion(renderer, runtime, cabinet_state,
+                                frame.framebuffer, viewport_motion);
                         }
                     }
                 } // Retain it during bonus entry and DMD-owned result screens.
@@ -21604,7 +21631,9 @@ int run_windows_host(
                     ? devils_crush::cabinet::kTableAspectDenominator
                     : kDisplayAspectDenominator;
                 const bool interpolate = smooth_table && table_view && motion_ready;
-                const bool blend_frame = smooth_table && !table_view && frame_artwork.current.texture;
+                const bool room_pieces = smooth_table && !table_view && viewport_motion.ready;
+                const bool blend_frame = smooth_table && !table_view && !room_pieces
+                    && frame_artwork.current.texture;
                 const auto motion_alpha = std::clamp(static_cast<float>(
                     std::chrono::duration<double>(Clock::now() - next_frame_time + frame_period).count()
                     / std::chrono::duration<double>(frame_period).count()), 0.0F, 1.0F);
@@ -21617,12 +21646,15 @@ int run_windows_host(
                     cabinet_mode ? kPureBlack : kDesktopFrameColor,
                     0.0F,
                     cabinet_mode && bonus_view && !table_view,
-                    interpolate ? &table_motion : nullptr, motion_alpha,
+                    interpolate ? &table_motion
+                        : room_pieces ? &viewport_motion.pieces : nullptr,
+                    motion_alpha,
                     blend_frame ? &frame_artwork : nullptr,
                     cabinet_config.playfield_rotation_degrees);
-                if (host_ok && (table_view || blend_frame)) {
+                if (host_ok && (table_view || room_pieces || blend_frame)) {
                     presentation_sample.observe(emulated_frames,
-                        (interpolate || blend_frame) && motion_alpha < 1.0F, Clock::now());
+                        (interpolate || room_pieces || blend_frame) && motion_alpha < 1.0F,
+                        Clock::now());
                     if (Clock::now() - presentation_sample.start >= std::chrono::seconds(5))
                         presentation_sample.report(smoothing_enabled);
                 } else {
@@ -21718,6 +21750,7 @@ int run_windows_host(
     destroy_audio(audio);
     table_motion.reset();
     frame_artwork.reset();
+    viewport_motion.reset();
     destroy_stage(stage);
     destroy_source(source);
     destroy_stage(backglass_logo_stage);

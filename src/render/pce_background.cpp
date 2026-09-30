@@ -194,6 +194,17 @@ std::optional<ArgbImage> decode_pce_background(
     return std::move(layer->image);
 }
 
+std::optional<PceBackgroundLayer> decode_pce_background_layer(
+    const PceBackgroundSnapshot& snapshot)
+{
+    return decode_pce_background_map(
+        snapshot.vram_words,
+        snapshot.vram_words,
+        snapshot.palette_entries,
+        snapshot.bat_width_tiles,
+        snapshot.bat_height_tiles);
+}
+
 std::optional<ArgbImage> decode_packed_pce_background(
     const PackedPceBackgroundSnapshot& snapshot)
 {

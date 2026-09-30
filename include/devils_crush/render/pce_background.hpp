@@ -74,6 +74,11 @@ struct StitchedImage {
 [[nodiscard]] std::optional<ArgbImage> decode_pce_background(
     const PceBackgroundSnapshot& snapshot);
 
+// The whole VRAM-resident BAT, with the per-pixel opacity sprite priority
+// needs.
+[[nodiscard]] std::optional<PceBackgroundLayer> decode_pce_background_layer(
+    const PceBackgroundSnapshot& snapshot);
+
 [[nodiscard]] std::optional<ArgbImage> decode_packed_pce_background(
     const PackedPceBackgroundSnapshot& snapshot);
 

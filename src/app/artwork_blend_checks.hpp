@@ -156,15 +156,23 @@
     auto* saved_target = SDL_GetRenderTarget(renderer);
     SourceTexture target;
     FrameArtworkPresenter presenter;
+    ViewportMotionPresenter rooms;
     bool ok = true;
     for (std::uint8_t route = 0; route <= 6 && ok; ++route) {
         runtime.reset();
         presenter.reset();
+        rooms.reset();
         if (route != 0 && !prepare_bonus_stage_launch(runtime, route)) { ok = false; break; }
         bool returning = route != 0;
         int endpoints = 0;
         int changed = 0;
-        for (int tick = 1; tick <= 240 && ok; ++tick) {
+        int room_frames = 0;
+        int piece_frames = 0;
+        int piece_endpoints = 0;
+        int moving_pieces = 0;
+        // Long enough to launch the ball into each room and watch it play.
+        const int ticks = route == 0 ? 240 : 600;
+        for (int tick = 1; tick <= ticks && ok; ++tick) {
             const auto frame = runtime.run_frame({});
             if (route != 0 && !service_synthetic_bonus_stage_return(runtime, returning)) {
                 ok = false;
@@ -185,7 +193,52 @@
             ok = target.texture && SDL_SetRenderTarget(renderer, target.texture)
                 && presenter.update(renderer, view,
                     state->screen_selector + (state->bonus_stage ? 256 : 0));
-            if (!ok || tick % 7 != 0) continue;
+            if (!ok) break;
+            if (route != 0) {
+                update_bonus_room_motion(renderer, runtime, state, view, rooms);
+                if (state->bonus_stage && state->screen_selector != 0U) ++room_frames;
+                if (rooms.ready) ++piece_frames;
+            }
+            if (rooms.ready && tick % 3 == 0) {
+                const auto read_pieces = [&](float alpha, bool even) -> SDL_Surface* {
+                    if (!rooms.pieces.draw(renderer, view.width, view.height, alpha, even)) return nullptr;
+                    auto* raw = SDL_RenderReadPixels(renderer, nullptr);
+                    auto* result = raw ? SDL_ConvertSurface(raw, SDL_PIXELFORMAT_ARGB8888) : nullptr;
+                    SDL_DestroySurface(raw);
+                    return result;
+                };
+                // Without the step filter's bounded correction, the endpoint
+                // is exactly the emulator's picture.
+                auto* endpoint = read_pieces(1.0F, false);
+                if (!endpoint) { ok = false; break; }
+                bool exact = true;
+                for (int row = 0; row < view.height && exact; ++row) {
+                    exact = std::memcmp(static_cast<const std::byte*>(endpoint->pixels) + row * endpoint->pitch,
+                        view.pixels.data() + row * view.pitch_pixels,
+                        static_cast<std::size_t>(view.width) * sizeof(std::uint32_t)) == 0;
+                }
+                if (!exact) {
+                    std::cerr << "Bonus " << static_cast<int>(route)
+                              << " room pieces differ from the picture at tick " << tick << '\n';
+                    ok = false;
+                }
+                piece_endpoints += exact ? 1 : 0;
+                auto* quarter = ok ? read_pieces(0.25F, true) : nullptr;
+                bool differs = false;
+                for (int row = 0; quarter && row < view.height; ++row) {
+                    differs |= std::memcmp(static_cast<const std::byte*>(endpoint->pixels) + row * endpoint->pitch,
+                        static_cast<const std::byte*>(quarter->pixels) + row * quarter->pitch,
+                        static_cast<std::size_t>(view.width) * sizeof(std::uint32_t)) != 0;
+                }
+                if (differs && ++moving_pieces == 20) {
+                    ok = ok && SDL_SaveBMP(quarter,
+                        (directory / ("bonus-" + std::to_string(route) + "-pieces-quarter.bmp")).string().c_str());
+                }
+                SDL_DestroySurface(endpoint);
+                SDL_DestroySurface(quarter);
+                if (!ok) break;
+            }
+            if (tick % 7 != 0) continue;
             const auto read = [&](float alpha) -> SDL_Surface* {
                 if (!presenter.draw(renderer, alpha)) return nullptr;
                 auto* raw = SDL_RenderReadPixels(renderer, nullptr);
@@ -221,8 +274,18 @@
                   << " artwork: " << endpoints << " exact endpoints; " << changed
                   << " distinct quarter-frame pictures; gameplay RAM unchanged.\n";
         ok = ok && endpoints > 0 && changed > 0;
+        if (route != 0) {
+            std::cout << "Bonus " << static_cast<int>(route) << " pieces: " << piece_frames << " of "
+                      << room_frames << " room frames; " << piece_endpoints << " exact endpoints; "
+                      << moving_pieces << " moved quarter-frame pictures.\n";
+            // A room that fell back on more than one frame in twenty is
+            // mostly still blending pictures, which is what this replaced.
+            ok = ok && piece_endpoints > 0 && moving_pieces > 0
+                && piece_frames * 20 >= room_frames * 19;
+        }
     }
     presenter.reset();
+    rooms.reset();
     const bool restored = SDL_SetRenderTarget(renderer, saved_target);
     destroy_source(target);
     return ok && restored;

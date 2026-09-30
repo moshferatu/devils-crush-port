@@ -34,7 +34,7 @@ struct TableMotionLayer {
             const auto slot = sprite.actor.slot;
             correction[slot] = devils_crush::render::table_motion_correction(sprite.actor,
                 previous[slot] ? &*previous[slot] : nullptr,
-                older[slot] ? &*older[slot] : nullptr);
+                older[slot] ? &*older[slot] : nullptr, frame.half_pixel_steps);
         }
         if (!upload_image(renderer, frame.background.image, background)) return false;
         devils_crush::render::ArgbImage pixels{
@@ -247,6 +247,41 @@ struct FrameArtworkPresenter {
         return SDL_SetTextureBlendMode(current.texture, SDL_BLENDMODE_BLEND)
             && SDL_SetTextureAlphaModFloat(current.texture, t)
             && SDL_RenderTexture(renderer, current.texture, nullptr, nullptr);
+    }
+};
+
+// Bonus rooms drawn as their background and hardware sprites
+// (render/viewport_motion.hpp), so the sprites move between game frames the
+// way the table's actors do. `ready` is false on any frame the pieces could
+// not reproduce exactly; the caller then blends complete pictures instead.
+struct ViewportMotionPresenter {
+    devils_crush::render::ViewportMotionTracker tracker;
+    TableMotionPresenter pieces;
+    bool ready = false;
+
+    void reset()
+    {
+        tracker.reset();
+        pieces.reset();
+        ready = false;
+    }
+
+    void update(SDL_Renderer* renderer, const devils_crush::emulation::VideoMemorySnapshot& video,
+        const FramebufferView& view)
+    {
+        auto frame = tracker.update(
+            {
+                .vram_words = video.vram_words,
+                .sat_words = video.sat_words,
+                .palette_entries = video.palette_entries,
+                .memory_width_register = video.memory_width_register,
+                .background_x_scroll = video.background_x_scroll,
+                .background_y_scroll = video.background_y_scroll,
+            },
+            {.pixels = view.pixels, .width = view.width, .height = view.height,
+                .pitch_pixels = view.pitch_pixels});
+        ready = frame && pieces.update(renderer, std::move(*frame));
+        if (!ready) pieces.reset();
     }
 };
 

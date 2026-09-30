@@ -76,12 +76,26 @@ available for comparing the feel, especially when timing flippers. Animation
 artwork transitions use a short crossfade, not generated geometric rotation
 frames. Fast pose changes can therefore look briefly softer. Teleports, newly visible
 actors, scene changes, quick-state restores and DMD-owned playfield holds clear
-or bypass motion history. Bonus stages, title/high-score screens and the base
-single-window emulated framebuffer blend consecutive complete pictures. These
-screens do not expose the stitched renderer's separate actors, so fast movement
-can show a brief double edge. Screen-selector and geometry changes discard old
-pictures, preserving scene cuts and the cabinet's existing bonus-entry hold.
-DMD and backglass rendering are unchanged.
+or bypass motion history.
+
+Bonus stages are drawn from separate pieces as well: the room's background,
+read from the BAT at the scroll registers, and its 64 hardware sprites. The
+picture a frame shows is built from the SAT copied at the end of the frame
+before it, so each room frame is drawn from the previous frame's SAT, with
+sprite halves past the sixteen a line can show cut out as hardware drops them.
+The pieces are used only when, put back together, they reproduce the
+emulator's picture pixel for pixel, in Beetle's RGB565 colors; a frame they
+cannot rebuild blends complete pictures instead. Sprites have no actor
+identity, so each links to the nearest previous sprite of the same size within
+the table's 16-pixel teleport limit, and every sprite's step correction is
+bounded to the ball's half pixel. On the scripted route every room frame after
+the first is drawn from pieces, in all six stages.
+
+Title/high-score screens and the base single-window emulated framebuffer still
+blend consecutive complete pictures. These screens do not expose separate
+actors, so fast movement can show a brief double edge. Screen-selector and
+geometry changes discard old pictures, preserving scene cuts and the cabinet's
+existing bonus-entry hold. DMD and backglass rendering are unchanged.
 
 `--cabinet-motion-check <directory>` runs the scripted gameplay route through
 the SDL software renderer. It checks exact 4x endpoint pictures against the
@@ -90,7 +104,9 @@ pictures without modifying gameplay RAM, and saves comparison BMPs. Synthetic
 readback checks cover palette midpoints, changing silhouettes, overlapping
 pieces, background priority, appearance changes, teleports and scene cuts.
 The same check also verifies exact endpoints and distinct blended pictures on
-the title screen and in all six bonus stages.
+the title screen and in all six bonus stages, and that each room's pieces
+reproduce the emulator's picture at the endpoint, move between frames, and
+cover at least 95% of its frames.
 `--cabinet-motion-gpu-check <directory>` runs the same readback checks using the
 actual graphics renderer in a hidden window.
 

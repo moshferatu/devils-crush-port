@@ -253,6 +253,14 @@ private:
     bool left_initial_lower_viewport_ = false;
 };
 
+// Decodes one hardware sprite's pattern into a width-by-height image in SAT
+// orientation (flips applied). Color zero is transparent (0x00000000); other
+// pixels resolve through the sprite half of the VCE palette.
+[[nodiscard]] std::optional<ArgbImage> decode_pce_sprite_image(
+    const PceSpriteSnapshot& snapshot,
+    std::uint16_t pattern,
+    std::uint16_t flags);
+
 // Composites the copied post-DMA SAT in hardware priority order. SAT
 // coordinates are viewport-relative; viewport_world_y locates the game's
 // active playfield top in the decoded table source, while destination_world_y

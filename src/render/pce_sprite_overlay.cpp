@@ -1946,6 +1946,42 @@ PersistentActorSpriteCache::update_and_composite(
     return stats;
 }
 
+std::optional<ArgbImage> decode_pce_sprite_image(
+    const PceSpriteSnapshot& snapshot,
+    const std::uint16_t pattern,
+    const std::uint16_t flags)
+{
+    if (snapshot.vram_words.size() < kVramWordCount
+        || snapshot.palette_entries.size() < kPaletteEntryCount) {
+        return std::nullopt;
+    }
+    ArgbImage image{
+        .width = sprite_width(flags),
+        .height = sprite_height(flags),
+    };
+    image.pixels.resize(
+        static_cast<std::size_t>(image.width)
+        * static_cast<std::size_t>(image.height));
+    for (int y = 0; y < image.height; ++y) {
+        for (int x = 0; x < image.width; ++x) {
+            const auto pixel = sprite_pixel(
+                snapshot, pattern, flags, image.width, image.height, x, y);
+            if (pixel == 0U) {
+                continue;
+            }
+            const auto palette_index = 256U
+                + static_cast<std::size_t>(flags & 0x000FU) * 16U
+                + static_cast<std::size_t>(pixel);
+            image.pixels[
+                static_cast<std::size_t>(y)
+                    * static_cast<std::size_t>(image.width)
+                + static_cast<std::size_t>(x)] =
+                decode_pce_color(snapshot.palette_entries[palette_index]);
+        }
+    }
+    return image;
+}
+
 std::optional<SpriteOverlayStats> composite_pce_sprites(
     ArgbImage& destination,
     const PceSpriteSnapshot& snapshot,

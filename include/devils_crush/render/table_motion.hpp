@@ -22,6 +22,9 @@ struct TableMotionSprite {
 struct TableMotionFrame {
     PceBackgroundLayer background;
     std::vector<TableMotionSprite> sprites;
+    // Bound every piece's step correction as tightly as the ball's. Viewport
+    // pieces are bare sprites, so the ball cannot be told apart from them.
+    bool half_pixel_steps = false;
 };
 
 inline bool table_art_linked(const cabinet::TableActorState& current,
@@ -48,7 +51,8 @@ inline bool table_motion_linked(const cabinet::TableActorState& current,
 inline std::pair<float, float> table_motion_correction(
     const cabinet::TableActorState& current,
     const cabinet::TableActorState* previous,
-    const cabinet::TableActorState* older) noexcept
+    const cabinet::TableActorState* older,
+    const bool half_pixel = false) noexcept
 {
     if (!table_motion_linked(current, previous)
         || !table_motion_linked(*previous, older)) return {};
@@ -56,7 +60,7 @@ inline std::pair<float, float> table_motion_correction(
     const int dy = current.world_y - previous->world_y;
     const int qx = previous->world_x - older->world_x;
     const int qy = previous->world_y - older->world_y;
-    const int limit = current.slot == cabinet::kBallActorSlot ? 2 : 4;
+    const int limit = half_pixel || current.slot == cabinet::kBallActorSlot ? 2 : 4;
     if (dx * qx < 0 || dy * qy < 0
         || std::abs(dx - qx) > limit || std::abs(dy - qy) > limit) return {};
     return {static_cast<float>(qx - dx) * 0.25F,

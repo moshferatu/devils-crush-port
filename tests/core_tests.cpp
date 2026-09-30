@@ -107,6 +107,7 @@
 #include "devils_crush/render/pce_background.hpp"
 #include "devils_crush/render/pce_sprite_overlay.hpp"
 #include "devils_crush/render/sharp_pixel_scaler.hpp"
+#include "devils_crush/render/viewport_motion.hpp"
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -11685,6 +11686,103 @@ void test_table_motion()
         "new motion history starts without a correction");
 }
 
+void test_viewport_motion()
+{
+    using devils_crush::render::pce_framebuffer_color;
+    using devils_crush::render::ViewportMotionTracker;
+    constexpr int kWidth = 256;
+    constexpr int kHeight = 240;
+    constexpr std::uint16_t kBackdrop = 0x001U;
+    constexpr std::uint16_t kSpriteColor = 0x1C0U;
+
+    // A transparent 32-by-32 map of tile $100 shows the backdrop everywhere;
+    // pattern $100 is a solid 16-by-16 sprite in sprite color 1.
+    std::vector<std::uint16_t> vram(32768U);
+    std::fill_n(vram.begin(), 32U * 32U, std::uint16_t{0x0100U});
+    std::fill_n(vram.begin() + 0x4000, 16, std::uint16_t{0xFFFFU});
+    std::vector<std::uint16_t> palette(512U);
+    palette[0] = kBackdrop;
+    palette[257] = kSpriteColor;
+
+    const auto sat_with = [](std::initializer_list<std::pair<int, int>> sprites) {
+        std::vector<std::uint16_t> sat(256U);
+        std::size_t index = 0;
+        for (const auto& [x, y] : sprites) {
+            sat[index * 4U] = static_cast<std::uint16_t>(y + 0x40);
+            sat[index * 4U + 1U] = static_cast<std::uint16_t>(x + 0x20);
+            sat[index * 4U + 2U] = 0x0200U;
+            sat[index * 4U + 3U] = 0x0080U;
+            ++index;
+        }
+        return sat;
+    };
+    const auto picture_with = [&](std::initializer_list<std::pair<int, int>> sprites) {
+        std::vector<std::uint32_t> pixels(
+            static_cast<std::size_t>(kWidth) * kHeight, pce_framebuffer_color(kBackdrop));
+        for (const auto& [x, y] : sprites) {
+            for (int row = y; row < y + 16; ++row) {
+                for (int column = std::max(x, 0); column < std::min(x + 16, kWidth); ++column) {
+                    pixels[static_cast<std::size_t>(row) * kWidth + column] =
+                        pce_framebuffer_color(kSpriteColor);
+                }
+            }
+        }
+        return pixels;
+    };
+    const auto update = [&](ViewportMotionTracker& tracker,
+                            const std::vector<std::uint16_t>& sat,
+                            const std::vector<std::uint32_t>& pixels) {
+        return tracker.update(
+            {.vram_words = vram, .sat_words = sat, .palette_entries = palette},
+            {.pixels = pixels, .width = kWidth, .height = kHeight, .pitch_pixels = kWidth});
+    };
+
+    ViewportMotionTracker tracker;
+    const auto at_20 = sat_with({{20, 10}});
+    const auto at_22 = sat_with({{22, 10}});
+    check(!update(tracker, at_20, picture_with({})),
+        "viewport pieces wait for the SAT their picture was drawn from");
+    const auto first = update(tracker, at_22, picture_with({{20, 10}}));
+    check(first && first->sprites.size() == 1U && first->sprites[0].x == 20
+            && first->sprites[0].y == 10 && first->sprites[0].foreground
+            && first->half_pixel_steps,
+        "a viewport picture is drawn from the previous frame's SAT");
+    const auto second = update(tracker, at_22, picture_with({{22, 10}}));
+    check(second && second->sprites.size() == 1U && first
+            && second->sprites[0].actor.slot == first->sprites[0].actor.slot
+            && second->sprites[0].actor.type == first->sprites[0].actor.type
+            && devils_crush::render::table_motion_offset(
+                   second->sprites[0].actor, &first->sprites[0].actor, 0.5F)
+                == std::pair{-1.0F, 0.0F},
+        "a moving viewport sprite keeps its identity and interpolates");
+    check(!update(tracker, at_22, picture_with({{40, 40}})),
+        "viewport pieces that do not rebuild the picture are refused");
+    const auto relinked = update(tracker, at_22, picture_with({{22, 10}}));
+    check(relinked && second
+            && relinked->sprites[0].actor.type != second->sprites[0].actor.type,
+        "a sprite after a refused frame is new rather than linked across the gap");
+    const auto distant = sat_with({{60, 10}});
+    static_cast<void>(update(tracker, distant, picture_with({{22, 10}})));
+    const auto jumped = update(tracker, distant, picture_with({{60, 10}}));
+    check(jumped && relinked
+            && jumped->sprites[0].actor.type != relinked->sprites[0].actor.type,
+        "a sprite that jumps beyond the link distance is a cut");
+
+    // Seventeen sprites on one line: hardware shows the first sixteen halves.
+    ViewportMotionTracker crowded;
+    const auto row = sat_with({{0, 100}, {15, 100}, {30, 100}, {45, 100}, {60, 100},
+        {75, 100}, {90, 100}, {105, 100}, {120, 100}, {135, 100}, {150, 100},
+        {165, 100}, {180, 100}, {195, 100}, {210, 100}, {225, 100}, {240, 100}});
+    static_cast<void>(update(crowded, row, picture_with({})));
+    const auto limited = update(crowded, row, picture_with({{0, 100}, {15, 100}, {30, 100},
+        {45, 100}, {60, 100}, {75, 100}, {90, 100}, {105, 100}, {120, 100}, {135, 100},
+        {150, 100}, {165, 100}, {180, 100}, {195, 100}, {210, 100}, {225, 100}}));
+    check(limited && limited->sprites.size() == 17U
+            && std::ranges::all_of(limited->sprites.front().image.pixels,
+                [](std::uint32_t pixel) { return pixel == 0U; }),
+        "sprite halves past sixteen on a line are cut from their pieces");
+}
+
 void test_dmd_attract_transition()
 {
     using devils_crush::cabinet::DmdPanel;
@@ -22067,6 +22165,7 @@ int main()
     test_dmd_attract_transition();
     test_dmd_name_entry();
     test_table_motion();
+    test_viewport_motion();
     test_table_palette_cache();
     test_native_registry();
     test_native_game_state_view();

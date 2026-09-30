@@ -154,6 +154,7 @@ add_library(
     src/render/sharp_pixel_scaler.cpp
     src/render/table_palette_cache.cpp
     src/render/title_logo.cpp
+    src/render/viewport_motion.cpp
     src/video/pce_vce.cpp
     src/video/pce_vdc.cpp
 )
