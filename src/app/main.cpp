@@ -5454,7 +5454,6 @@ parse_logical_address_range(const std::string_view text)
         if (!nudge_multiplier_override) {
             options.nudge_multiplier = play.nudge_multiplier;
         }
-        options.emulate_only = options.emulate_only || !play.native;
     }
     options.cabinet = cabinet_override.value_or(play_selected && play.cabinet);
     options.music_voice_overlay = music_overlay_override.value_or(
@@ -9767,11 +9766,11 @@ void print_usage()
            "  Scale the original nudge impulse (0-16, default 1; e.g. 2.5).\n"
            "  Applies to keyboard, gamepad and PinOne nudges.\n\n"
         << "Settings (devils-crush.ini, which the launcher edits):\n"
-           "  game.rom, game.cabinet, game.bonus_stage, game.native,\n"
+           "  game.rom, game.cabinet, game.bonus_stage,\n"
            "  audio.music_voice_overlay, video.smoothing and\n"
            "  input.nudge_multiplier set normal play's defaults for --rom,\n"
-           "  --no-cabinet, --bonus-stage, --emulate-only,\n"
-           "  --no-music-voice-overlay, F6 and --nudge-multiplier. A flag\n"
+           "  --no-cabinet, --bonus-stage, --no-music-voice-overlay, F6\n"
+           "  and --nudge-multiplier. A flag\n"
            "  beats the file for that run.\n\n"
         << "Saved data (in the folder the game is started from):\n"
         << "  devils-crush.sav      The cartridge's backup RAM, holding the\n"

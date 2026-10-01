@@ -492,7 +492,6 @@ void append_bindings(std::string& output, const InputBindings& input)
     output += "game.rom=" + escape_value(play.rom) + '\n';
     output += "game.cabinet=" + std::to_string(play.cabinet ? 1 : 0) + '\n';
     output += "game.bonus_stage=" + std::to_string(play.bonus_stage) + '\n';
-    output += "game.native=" + std::to_string(play.native ? 1 : 0) + '\n';
     output += "audio.music_voice_overlay="
         + std::to_string(play.music_voice_overlay ? 1 : 0) + '\n';
     output += "video.smoothing=" + std::to_string(play.smoothing ? 1 : 0) + '\n';
@@ -548,7 +547,6 @@ void append_bindings(std::string& output, const InputBindings& input)
         play.nudge_multiplier = *value;
     }
     return flag("game.cabinet", play.cabinet)
-        && flag("game.native", play.native)
         && flag("audio.music_voice_overlay", play.music_voice_overlay)
         && flag("video.smoothing", play.smoothing);
 }
@@ -817,9 +815,10 @@ std::optional<DisplayConfig> decode_display_config(
         || !parse_placement(fields, "backglass", config.backglass)) {
         return std::nullopt;
     }
-    // A file written before the backglass image was removed still carries
-    // `backglass.path`. Unknown fields are ignored, so it stays loadable and
-    // the line simply disappears the next time the file is written.
+    // A file written before the backglass image or the game-code choice was
+    // removed still carries `backglass.path` or `game.native`. Unknown fields
+    // are ignored, so it stays loadable and the line simply disappears the
+    // next time the file is written; only `--emulate-only` leaves native code.
     if (!parse_bindings(fields, config.input)
         || !parse_play_settings(fields, config.play)) {
         return std::nullopt;

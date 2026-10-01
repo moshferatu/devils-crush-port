@@ -235,9 +235,6 @@ struct PlaySettings {
     // `game.bonus_stage`: 1 to 6 starts in that bonus stage (`--bonus-stage`);
     // 0 starts on the table.
     std::uint8_t bonus_stage = 0;
-    // `game.native`: the admitted native routines, or the emulated original
-    // (`--emulate-only`).
-    bool native = true;
     // `audio.music_voice_overlay` (`--no-music-voice-overlay`).
     bool music_voice_overlay = true;
     // `video.smoothing`: what F6 toggles, and F6 is remembered here.

@@ -207,7 +207,7 @@ bool same_ignoring_case(std::string_view a, std::string_view b)
 enum Kind { K_HEAD, K_CHOICE, K_RANGE, K_PATH, K_TEXT, K_NUMBER, K_KEYS, K_INPUTS };
 
 enum Setting {
-    S_ROM, S_CABINET, S_BONUS_STAGE, S_NATIVE,
+    S_ROM, S_CABINET, S_BONUS_STAGE,
     S_SMOOTHING, S_ROTATION, S_FULLSCREEN_PLAYFIELD, S_FULLSCREEN_DMD, S_FULLSCREEN_BACKGLASS,
     S_MONITOR_PLAYFIELD, S_MONITOR_DMD, S_MONITOR_BACKGLASS,
     S_OVERLAY,
@@ -239,7 +239,6 @@ struct Row {
 
 constexpr Choice on_off[] = {{0, "Off"}, {1, "On"}};
 constexpr Choice rotation_choices[] = {{0, "0\xC2\xB0"}, {90, "90\xC2\xB0"}, {180, "180\xC2\xB0"}, {270, "270\xC2\xB0"}};
-constexpr Choice native_choices[] = {{1, "Native"}, {0, "Emulated original"}};
 constexpr Choice cabinet_choices[] = {{1, "Cabinet (three windows)"}, {0, "Desktop (one window)"}};
 
 template <typename T, std::size_t N>
@@ -284,9 +283,6 @@ void build_rows()
     add_range(TAB_GAME, S_BONUS_STAGE, "Starting Bonus Stage", 0, 6, 1, false,
         "Off starts on the table. A stage from 1 to 6 starts a new session there, through the "
         "game's own bonus transition.");
-    add_choice(TAB_GAME, S_NATIVE, "Game Code", native_choices, count_of(native_choices),
-        "Native: the port's own routines, wherever one has been proven against the original. "
-        "Emulated original: the cartridge's code alone, untouched.");
 
     add_choice(TAB_VIDEO, S_SMOOTHING, "Smoothing", on_off, 2,
         "On: a picture for every refresh of a fast display, the table's motion and artwork eased "
@@ -490,7 +486,6 @@ int setting_get(DisplayConfig& c, int id)
     switch (id) {
     case S_CABINET: return c.play.cabinet;
     case S_BONUS_STAGE: return c.play.bonus_stage;
-    case S_NATIVE: return c.play.native;
     case S_SMOOTHING: return c.play.smoothing;
     case S_ROTATION: return c.playfield_rotation_degrees;
     case S_FULLSCREEN_PLAYFIELD:
@@ -523,7 +518,6 @@ void setting_set(DisplayConfig& c, int id, int v)
     switch (id) {
     case S_CABINET: c.play.cabinet = v != 0; break;
     case S_BONUS_STAGE: c.play.bonus_stage = static_cast<std::uint8_t>(v); break;
-    case S_NATIVE: c.play.native = v != 0; break;
     case S_SMOOTHING: c.play.smoothing = v != 0; break;
     case S_ROTATION: c.playfield_rotation_degrees = v; break;
     case S_FULLSCREEN_PLAYFIELD:

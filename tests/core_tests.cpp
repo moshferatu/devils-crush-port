@@ -8936,7 +8936,6 @@ void test_cabinet_display_config()
             .rom = "D:\\Games\\Devil's Crush (USA).pce",
             .cabinet = false,
             .bonus_stage = 4U,
-            .native = false,
             .music_voice_overlay = false,
             .smoothing = false,
             .nudge_multiplier = 2.5,
@@ -8952,6 +8951,11 @@ void test_cabinet_display_config()
         }
         check(chosen_text.find("input.nudge_multiplier=2.5\n") != std::string::npos,
             "a nudge multiplier is written as it was typed");
+        check(chosen_text.find("game.native=") == std::string::npos,
+            "the game code is not a setting the file keeps");
+        const auto retired = decode_display_config(to_bytes(chosen_text + "game.native=0\n"));
+        check(retired && retired->play == chosen.play,
+            "a file from when the game code was a setting still loads");
         const std::array<std::pair<std::string_view, std::string_view>, 4> unreadable{{
             {"game.cabinet=0\n", "game.cabinet=2\n"},
             {"game.bonus_stage=4\n", "game.bonus_stage=7\n"},

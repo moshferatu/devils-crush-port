@@ -62,7 +62,7 @@ devils-crush.exe --rom "D:\path\to\Devil's Crush.pce"
 
 With no options the game plays as `devils-crush.ini` says, which is
 what the launcher edits: `game.rom`, `game.cabinet`, `game.bonus_stage`,
-`game.native`, `audio.music_voice_overlay`, `video.smoothing` and
+`audio.music_voice_overlay`, `video.smoothing` and
 `input.nudge_multiplier`. An option on the command line beats the file for
 that run, and a file without them plays with the defaults below.
 
