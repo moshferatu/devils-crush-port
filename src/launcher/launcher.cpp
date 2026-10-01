@@ -781,7 +781,6 @@ struct Ui {
     float drop_x = 0, drop_y = 0, drop_w = 0, drop_h = 0;
     std::vector<Hot> hot;
     std::string status;
-    bool status_bad = false;
     bool dirty = false;
     int held_dir = 0, stick_x = 0, stick_y = 0;
     Uint64 held_next = 0;
@@ -795,7 +794,9 @@ struct Ui {
 };
 Ui ui;
 
-void say(bool bad, const char* fmt, ...)
+// Only for what went wrong, or was refused: it is drawn under the help text in
+// red, until something works. A thing that worked says nothing.
+void say(const char* fmt, ...)
 {
     char buf[2048];
     va_list ap;
@@ -803,10 +804,13 @@ void say(bool bad, const char* fmt, ...)
     std::vsnprintf(buf, sizeof buf, fmt, ap);
     va_end(ap);
     ui.status = buf;
-    ui.status_bad = bad;
 }
 
-void changed() { ui.dirty = true; }
+void changed()
+{
+    ui.dirty = true;
+    ui.status.clear();
+}
 
 std::vector<Row>& tab_rows() { return rows[static_cast<std::size_t>(ui.tab)]; }
 int row_count() { return static_cast<int>(tab_rows().size()); }
@@ -926,18 +930,15 @@ void load()
     ui.ini_exists = std::filesystem::exists(ui.ini, error);
     ui.def = DisplayConfig{};
     ui.cfg = DisplayConfig{};
-    const auto name = utf8_of(kConfigRelative);
+    ui.status.clear();
     if (ui.ini_exists) {
         const auto loaded = devils_crush::cabinet::load_display_config(ui.ini);
         if (loaded.loaded()) {
             ui.cfg = loaded.config;
-            say(false, "Read %s", name.c_str());
         } else {
-            say(true, "%s could not be read, so the game would play it as the defaults shown here. Save "
-                "replaces it.", name.c_str());
+            say("%s could not be read, so the game would play it as the defaults shown here. Save "
+                "replaces it.", utf8_of(kConfigRelative).c_str());
         }
-    } else {
-        say(false, "There is no %s yet. Save or Play makes one here.", name.c_str());
     }
     if (ui.cfg.play.rom.empty()) ui.cfg.play.rom = kRomDefault;
 }
@@ -955,7 +956,7 @@ bool check_before_saving()
     else if (n.axis_x == n.axis_y) wrong = "The nudge board's X and Y axes are the same axis.";
     else if (n.release >= n.threshold) wrong = "The nudge board's release has to be below its threshold.";
     if (wrong == nullptr) return true;
-    say(true, "%s Nothing is written until it is fixed.", wrong);
+    say("%s Nothing is written until it is fixed.", wrong);
     return false;
 }
 
@@ -965,12 +966,12 @@ bool save()
     if (!check_before_saving()) return false;
     const auto saved = devils_crush::cabinet::save_display_config_atomic(ui.ini, ui.cfg);
     if (!saved.saved) {
-        say(true, "Could not write %s: %s", utf8_of(ui.ini).c_str(), saved.message.c_str());
+        say("Could not write %s: %s", utf8_of(ui.ini).c_str(), saved.message.c_str());
         return false;
     }
     ui.ini_exists = true;
     ui.dirty = false;
-    say(false, "Saved %s", utf8_of(kConfigRelative).c_str());
+    ui.status.clear();
     return true;
 }
 
@@ -994,14 +995,14 @@ bool launch()
         ui.on_buttons = false;
         ui.focus = 0;
         ui.scroll = 0;
-        if (!rom.found) say(true, "The ROM is not at %s. Choose it here first.", utf8_of(rom.resolved).c_str());
-        else say(true, "%s is not the supported ROM. Choose the USA release here first.", utf8_of(rom.resolved).c_str());
+        if (!rom.found) say("The ROM is not at %s. Choose it here first.", utf8_of(rom.resolved).c_str());
+        else say("%s is not the supported ROM. Choose the USA release here first.", utf8_of(rom.resolved).c_str());
         return false;
     }
     const auto exe = ui.base / kGameExe;
     std::error_code error;
     if (!std::filesystem::is_regular_file(exe, error)) {
-        say(true, "devils-crush.exe is not beside the launcher, in %s", utf8_of(ui.base).c_str());
+        say("devils-crush.exe is not beside the launcher, in %s", utf8_of(ui.base).c_str());
         return false;
     }
     if (!save()) return false;
@@ -1012,7 +1013,7 @@ bool launch()
     si.cb = sizeof si;
     PROCESS_INFORMATION pi{};
     if (!CreateProcessW(exe.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, ui.base.c_str(), &si, &pi)) {
-        say(true, "Could not start %s (error %lu)", utf8_of(exe).c_str(), static_cast<unsigned long>(GetLastError()));
+        say("Could not start %s (error %lu)", utf8_of(exe).c_str(), static_cast<unsigned long>(GetLastError()));
         return false;
     }
     CloseHandle(pi.hThread);
@@ -1080,7 +1081,7 @@ void commit_edit()
         char* end = nullptr;
         const long long v = std::strtoll(t.c_str(), &end, 10);
         if (t.empty() || *end != '\0' || v < r->lo || v > r->hi) {
-            say(true, "%s wants a whole number; it is as it was.", r->label);
+            say("%s wants a whole number; it is as it was.", r->label);
             return;
         }
         if (v != setting_get(ui.cfg, r->id)) {
@@ -1091,8 +1092,8 @@ void commit_edit()
     }
     // "Copy as path" puts quotes round it.
     if (r->kind == K_PATH && t.size() >= 2 && t.front() == '"' && t.back() == '"') t = t.substr(1, t.size() - 2);
-    if (r->id == S_ROM && t.empty()) { say(true, "The ROM needs a path; it is as it was."); return; }
-    if (r->id == S_NUDGE_DEVICE && t.empty()) { say(true, "The nudge board needs a name; it is as it was."); return; }
+    if (r->id == S_ROM && t.empty()) { say("The ROM needs a path; it is as it was."); return; }
+    if (r->id == S_NUDGE_DEVICE && t.empty()) { say("The nudge board needs a name; it is as it was."); return; }
     set_text(r->id, t);
 }
 
@@ -1106,7 +1107,7 @@ void edit_insert(std::string_view s)
 void start_capture(int i)
 {
     const Row* r = row_at(i);
-    if (keys_of(ui.cfg, r->id).size() >= kKeysMax) { say(true, "Four at most. Take one off first."); return; }
+    if (keys_of(ui.cfg, r->id).size() >= kKeysMax) { say("Four at most. Take one off first."); return; }
     ui.capturing = true;
     ui.capture_row = i;
     ui.capture_end = SDL_GetTicks() + 5000;
@@ -1134,12 +1135,12 @@ void capture_key(SDL_Scancode sc)
     ui.capturing = false;
     const char* name = SDL_GetScancodeName(sc);
     if (name == nullptr || *name == '\0' || SDL_GetScancodeFromName(name) != sc) {
-        say(true, "That key has no name devils-crush.ini can hold.");
+        say("That key has no name devils-crush.ini can hold.");
         return;
     }
     auto& list = keys_of(ui.cfg, r->id);
     for (const auto& k : list)
-        if (same_ignoring_case(k, name)) { say(false, "%s is already here.", name); return; }
+        if (same_ignoring_case(k, name)) { say("%s is already here.", name); return; }
     if (list.size() < kKeysMax) { list.emplace_back(name); changed(); }
 }
 
@@ -1236,7 +1237,7 @@ void drop_open(int i)
     const Row* r = row_at(i);
     const auto opts = r != nullptr ? row_options(*r) : std::vector<int>{};
     if (opts.empty()) {
-        if (r != nullptr && r->kind == K_INPUTS) say(false, "Every pad input is here already.");
+        if (r != nullptr && r->kind == K_INPUTS) say("Every pad input is here already.");
         return;
     }
     ui.focus = i;
@@ -1309,7 +1310,7 @@ bool press_button(int b)
         for (const auto& r : tab_rows()) row_copy(ui.cfg, ui.def, r);
         if (ui.tab == TAB_GAME && ui.cfg.play.rom.empty()) ui.cfg.play.rom = kRomDefault;
         changed();
-        say(false, "%s is back to its defaults. Nothing is written until Save or Play.", tab_names[ui.tab]);
+        ui.status.clear();
         return false;
     case UI_SAVE: save(); return false;
     case UI_PLAY: return launch();
@@ -1719,6 +1720,8 @@ void draw()
     fill(0, help_y, W, L(1), C_FAINT);
     const float help_w = W - L(MARGIN) * 2;
     float hy = help_y + L(10);
+    const char* help = nullptr;
+    std::string warn = ui.status;
     if (ui.on_buttons) {
         static const char* const button_help[UI_BUTTONS] = {
             "Put this tab back to its defaults. Nothing is written until Save or Play.",
@@ -1726,10 +1729,12 @@ void draw()
             "Close the launcher. Escape.",
             "Save, then start the game. Ctrl+Enter or F5, or Start on a controller.",
         };
-        wrap(ui.small, L(MARGIN), hy, help_w, button_help[ui.button], C_DIM, 2);
+        help = button_help[ui.button];
     } else if (const Row* r = row_at(ui.focus)) {
-        std::string warn;
-        if (r->id == S_ROM && r->kind == K_PATH) {
+        help = r->help;
+        if (!warn.empty()) {
+            // The last problem stands until something works.
+        } else if (r->id == S_ROM && r->kind == K_PATH) {
             const auto& rom = rom_check();
             if (!rom.found) warn = "Not found: " + utf8_of(rom.resolved);
             else if (!rom.supported) warn = "Not the supported ROM: " + utf8_of(rom.resolved);
@@ -1740,12 +1745,12 @@ void draw()
                     break;
                 }
         }
-        const int warn_lines = warn.empty() ? 0 : wrap_lines(ui.small, 0, 0, help_w, warn, C_RED, 2, true);
-        hy += wrap(ui.small, L(MARGIN), hy, help_w, r->help, C_DIM, 3 - warn_lines);
-        if (!warn.empty()) wrap(ui.small, L(MARGIN), hy, help_w, warn, C_RED, 2);
     }
+    const int warn_lines = warn.empty() ? 0 : wrap_lines(ui.small, 0, 0, help_w, warn, C_RED, 2, true);
+    if (help != nullptr) hy += wrap(ui.small, L(MARGIN), hy, help_w, help, C_DIM, 3 - warn_lines);
+    if (!warn.empty()) wrap(ui.small, L(MARGIN), hy, help_w, warn, C_RED, 2);
 
-    // The buttons, and what just happened.
+    // The buttons.
     const float by = H - L(BAR_H) + L(14), bh = L(BAR_H) - L(28);
     float bx[UI_BUTTONS], bw[UI_BUTTONS];
     for (int b = 0; b < UI_BUTTONS; ++b) bw[b] = text_width(ui.bold, button_names[b]) + L(44);
@@ -1763,10 +1768,6 @@ void draw()
              play ? C_BLACK : f ? C_TEXT : C_SOFT);
         hot(bx[b], by, bw[b], bh, P_BUTTON, -1, b);
     }
-    const std::string status = ui.dirty && ui.status.empty() ? "Unsaved changes" : ui.status;
-    const float sx = bx[UI_SAVE] + bw[UI_SAVE] + L(20), sw = bx[UI_QUIT] - L(20) - sx;
-    if (sw > L(40) && !status.empty())
-        text_tail(ui.small, sx, by + (bh - ui.small.height) / 2, sw, status, ui.status_bad ? C_RED : C_DIM);
 
     if (ui.drop_row >= 0) draw_drop_list();
 }
@@ -1947,9 +1948,9 @@ bool handle(const SDL_Event& e)
             if (ui.editing) end_edit();
             const auto rel = relative_to_base(path_of_utf8(path));
             set_text(S_ROM, rel);
-            say(false, "The ROM is %s", rel.c_str());
+            ui.status.clear();
         } else {
-            say(true, "That is not a .pce file.");
+            say("That is not a .pce file.");
         }
         return false;
     }
@@ -2192,11 +2193,7 @@ int main(int argc, char* argv[])
     // settings an earlier build left in its subfolder.
     const auto migration = devils_crush::core::migrate_legacy_data_folder(ui.base);
     load();
-    if (!migration.problems.empty()) {
-        say(true, "Could not move %s", migration.problems.front().c_str());
-    } else if (!migration.moved.empty()) {
-        say(false, "Moved the settings and saves out of portable-data, next to the launcher.");
-    }
+    if (!migration.problems.empty()) say("Could not move %s", migration.problems.front().c_str());
     ui.focus = first_row();
 
     ui.ttf[0] = load_font(false);
@@ -2270,8 +2267,7 @@ int main(int argc, char* argv[])
                 // so that the next Play does not put back what it replaced.
                 // Nothing here has changed since Play saved.
                 load();
-                if (code != 0) say(true, "The game stopped with exit code %lu.", static_cast<unsigned long>(code));
-                else say(false, "The game has closed.");
+                if (code != 0) say("The game stopped with exit code %lu.", static_cast<unsigned long>(code));
                 draw();
                 SDL_RenderPresent(ui.ren);
                 SDL_ShowWindow(ui.win);
