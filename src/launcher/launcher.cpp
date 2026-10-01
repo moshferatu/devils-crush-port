@@ -2179,6 +2179,9 @@ int main(int argc, char* argv[])
             return 2;
         }
     }
+    // SDL drops the click that brings the window forward; a click on a row or
+    // a button behind another window should do what it says the first time.
+    SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
         std::fprintf(stderr, "error: %s\n", SDL_GetError());
         return 1;
