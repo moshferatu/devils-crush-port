@@ -8,7 +8,6 @@ namespace {
 constexpr std::uint16_t kWorkRamBase = 0x2000U;
 constexpr std::uint8_t kMusicSlotCount = 6U;
 constexpr std::uint8_t kEffectSlotFirst = 6U;
-constexpr std::uint8_t kSequencerInProgress = 0x04U;
 
 [[nodiscard]] constexpr bool valid_channel(const std::uint8_t channel)
 {
@@ -37,7 +36,7 @@ void MusicVoiceOverlay::power(const std::int32_t timestamp) noexcept
 {
     psg_.power(timestamp);
     loaded_waveforms_.fill(-1);
-    pending_sequencer_select_ = false;
+    upload_pending_ = false;
     displaced_channel_mask_ = 0U;
     sequenced_slots_.fill(false);
     voice_volumes_.fill(0U);
@@ -66,6 +65,12 @@ void MusicVoiceOverlay::observe_sequencer_write(
                     ? 0U : value + fade - 31U)
                 : value;
         }
+    } else if (pc == 0x4138U || pc == 0x4B75U) {
+        // The return-address push of the JSR into the 4142 upload walk: at
+        // 4138 after a sequencer pass, or at 4B75 on the reset arm, whose
+        // 49B6 clears the latches before it jumps into the walk. The latch
+        // bank is final, and the walk's first PSG write follows.
+        upload_pending_ = true;
     } else if (pc == 0x40B1U) {
         const auto slot = read(work_ram, 0x2E34U);
         if (slot < sequenced_slots_.size()) sequenced_slots_[slot] = true;
@@ -273,21 +278,17 @@ void MusicVoiceOverlay::observe_primary_write(
 {
     const auto port = static_cast<std::uint8_t>(address & 0x0FU);
 
-    if (pending_sequencer_select_) {
-        // 45:4142 selects channel zero, then writes either its period ($0802)
-        // or, for a silent latch, its cleared noise register ($0807). The
-        // voice-level $49D2 commit also selects channel zero but follows it
-        // directly with $0804, so this two-write signature excludes it.
-        if (port == 0x02U || port == 0x07U) {
-            synchronize(timestamp, work_ram);
-        }
-        pending_sequencer_select_ = false;
+    if (upload_pending_) {
+        // The walk does not always begin at channel zero: while a
+        // timer-driven voice holds channel zero ($F5), the walk skips it and
+        // starts by selecting channel one. The end-of-game and game-over
+        // tunes do this for seconds at a time, so waiting for a channel-zero
+        // select left the previous pass's displaced voices sounding.
+        upload_pending_ = false;
+        synchronize(timestamp, work_ram);
     }
 
-    if (port == 0x00U) {
-        pending_sequencer_select_ = value == 0U
-            && (read(work_ram, 0x20D6U) & kSequencerInProgress) != 0U;
-    } else if (port == 0x01U) {
+    if (port == 0x01U) {
         // Global balance is not part of the per-frame latch bank. Mirror its
         // rare direct writes so both PSGs use the same master attenuation.
         psg_.write(timestamp, address, value);

@@ -236,11 +236,19 @@ void test_music_voice_overlay()
             0x45U, 0x4A92U, volume, ram, 0x2E24U);
         overlay.observe_sequencer_write(0x45U, 0x40B1U, 0x04U, ram);
     };
+    // The JSR into the 45:4142 upload walk pushes its return address from
+    // 4138; the walk's first PSG write is where the pass is committed.
+    const auto upload = [&overlay, &ram]() {
+        overlay.observe_sequencer_write(0x45U, 0x4138U, 0x41U, ram, 0x21FFU);
+    };
     overlay.observe_sequencer_write(0x45U, 0x49B6U, 0U, ram);
     sequenced(6U, 31U);
     sequenced(2U, 31U);
 
     overlay.observe_primary_write(0, 0x01U, 0xFFU, ram);
+    check(overlay.displaced_channel_mask() == 0U,
+        "music overlay waits for the sequencer's upload walk");
+    upload();
     overlay.observe_primary_write(0, 0x00U, 0x00U, ram);
     overlay.observe_primary_write(0, 0x02U, 0x40U, ram);
     check(
@@ -260,6 +268,7 @@ void test_music_voice_overlay()
     store(0x2F22U + 6U, 0x00U);
     store(0x2F2CU + 6U, 0x00U);
     overlay.observe_sequencer_write(0x45U, 0x4A25U, 0U, ram, 0x2E24U);
+    upload();
     overlay.observe_primary_write(20000, 0x00U, 0x00U, ram);
     overlay.observe_primary_write(20000, 0x02U, 0x40U, ram);
     check(
@@ -272,6 +281,7 @@ void test_music_voice_overlay()
     store(0x2F22U + 6U, 0x40U);
     overlay.observe_sequencer_write(0x45U, 0x49B6U, 0U, ram);
     sequenced(9U, 31U);
+    upload();
     overlay.observe_primary_write(20000, 0x00U, 0U, ram);
     overlay.observe_primary_write(20000, 0x07U, 0U, ram);
     check(overlay.displaced_channel_mask() == 0U,
@@ -298,6 +308,7 @@ void test_music_voice_overlay()
                 0x45U, 0x4A92U, 31U, ram, 0x2E24U);
             subject.observe_sequencer_write(0x45U, 0x40B1U, 4U, ram);
         }
+        subject.observe_sequencer_write(0x45U, 0x4138U, 0x41U, ram, 0x21FFU);
         subject.observe_primary_write(0, 1U, 0xFFU, ram);
         subject.observe_primary_write(0, 0U, 0U, ram);
         subject.observe_primary_write(0, 2U, 0U, ram);
@@ -316,10 +327,40 @@ void test_music_voice_overlay()
     sequenced(6U, 0U);
     sequenced(2U, 31U);
     overlay.observe_sequencer_write(0x45U, 0x4A92U, 31U, ram, 0x2E24U);
+    upload();
     overlay.observe_primary_write(20000, 0U, 0U, ram);
     overlay.observe_primary_write(20000, 2U, 0U, ram);
     check(overlay.displaced_channel_mask() == 0U,
         "silent effect cannot double the music that won the physical channel");
+
+    // While a timer-driven voice holds channel zero, the walk skips it and
+    // begins by selecting channel one. The effect ending must still silence
+    // the reconstructed voice rather than leave it sounding.
+    overlay.observe_sequencer_write(0x45U, 0x49B6U, 0U, ram);
+    sequenced(6U, 31U);
+    sequenced(2U, 31U);
+    upload();
+    overlay.observe_primary_write(20000, 0U, 1U, ram);
+    overlay.observe_primary_write(20000, 2U, 0x40U, ram);
+    check(overlay.displaced_channel_mask() == 0x04U,
+        "music overlay commits a pass whose walk skips channel zero");
+    store(0x2E46U + 6U, 0x00U);
+    overlay.observe_sequencer_write(0x45U, 0x49B6U, 0U, ram);
+    sequenced(2U, 31U);
+    upload();
+    overlay.observe_primary_write(20000, 0U, 1U, ram);
+    overlay.observe_primary_write(20000, 7U, 0U, ram);
+    check(overlay.displaced_channel_mask() == 0U,
+        "an effect ending under a channel-zero timer voice leaves no stuck note");
+
+    // Stray channel-zero writes outside a sequencer pass commit nothing.
+    overlay.observe_sequencer_write(0x45U, 0x49B6U, 0U, ram);
+    sequenced(6U, 31U);
+    sequenced(2U, 31U);
+    overlay.observe_primary_write(20000, 0U, 0U, ram);
+    overlay.observe_primary_write(20000, 2U, 0x40U, ram);
+    check(overlay.displaced_channel_mask() == 0U,
+        "music overlay ignores PSG writes outside the upload walk");
 }
 
 void test_native_cached_position_restore()

@@ -1004,7 +1004,12 @@ comes from the actual `$2E22-$2E27` latch writes: a silent effect can leave its
 channel available to music, so treating it as occupied would double that
 music in the overlay. Only slots visited during the current sequencer pass
 can supply overlay voices. This prevents exclusive announcements from
-resurrecting stale notes left in lower-priority slot records.
+resurrecting stale notes left in lower-priority slot records. A pass is
+committed at the first PSG write after the sequencer's JSR into the `45:4142`
+upload walk, not at a channel-zero select: while a timer-driven voice holds
+channel zero, as the end-of-game and game-over tunes do for seconds at a time,
+the walk skips that channel, and waiting for its select left the previous
+pass's reconstructed voices sounding.
 
 Perfect bonus results also expose an original double restart. Table return
 resumes music through `01:C201`, then the star controller calls `03:7CF6`

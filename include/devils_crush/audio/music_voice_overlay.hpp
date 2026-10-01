@@ -36,10 +36,10 @@ public:
     void update(std::int32_t timestamp) noexcept;
     void reset_timestamp(std::int32_t base) noexcept;
 
-    // Observes writes sent to the physical PSG. The channel-zero select and
-    // period/noise prefix made by 45:4142 identifies the point after all nine
-    // logical voices have been sequenced and immediately before the six
-    // hardware channels are pushed.
+    // Observes writes sent to the physical PSG. The first write after the
+    // sequencer's JSR into 45:4142 is the point after all nine logical voices
+    // have been sequenced and immediately before the six hardware channels
+    // are pushed.
     void observe_primary_write(
         std::int32_t timestamp,
         std::uint8_t address,
@@ -92,7 +92,7 @@ private:
     std::array<bool, 10> sequenced_slots_{};
     std::array<std::uint8_t, 10> voice_volumes_{};
     std::uint8_t effect_channel_mask_ = 0;
-    bool pending_sequencer_select_ = false;
+    bool upload_pending_ = false;
     std::uint8_t displaced_channel_mask_ = 0;
 };
 
