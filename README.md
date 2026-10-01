@@ -99,7 +99,7 @@ The flag `--emulate-only` can be used to execute the original assembly instead, 
 | Left Shift, Left | Left flipper |
 | Right Shift, Right | Right flipper |
 | Enter | Launch the ball in the shooter; start, pause, and confirm everywhere else |
-| X | Nudge |
+| Space | Nudge |
 
 The first available SDL gamepad works too, and extra mappings can be supplied
 in `gamecontrollerdb.txt`. Keys are rebindable under `input.` in

@@ -388,7 +388,7 @@ sends*, which is what makes the rest fit together:
 | Left Shift, Left | d-pad left | — | Left flipper | A direction — scrolls |
 | Right, Right Shift | d-pad right | — | Right flipper | A direction — scrolls |
 | Enter | button I + run | **Launch** | Pause | Start, pause, confirm |
-| X | button II | — | Nudge | — |
+| Space | button II | — | Nudge | — |
 | Up, Down | d-pad up/down | — | — | Menu navigation |
 
 No key that works a flipper sends button I, so no flipper button can accept a
@@ -765,7 +765,7 @@ input, holding a comma-separated list of SDL key names:
 
 ```ini
 input.one=Return
-input.two=X
+input.two=Space
 input.select=Backspace
 input.run=Return
 input.up=Up

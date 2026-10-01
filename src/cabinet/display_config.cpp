@@ -673,7 +673,7 @@ InputBindings default_input_bindings()
     // flipper button sends it: both reach their flipper as a direction, so
     // both scroll a letter rather than accepting one.
     bindings[PadButton::one] = {"Return"};
-    bindings[PadButton::two] = {"X"};
+    bindings[PadButton::two] = {"Space"};
     bindings[PadButton::select] = {"Backspace"};
     bindings[PadButton::run] = {"Return"};
     bindings[PadButton::up] = {"Up"};

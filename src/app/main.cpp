@@ -9862,7 +9862,7 @@ void print_usage()
         << "                       pause and confirm\n"
         << "                       (the flippers answer during the launch\n"
         << "                       too, which the cartridge does not allow)\n"
-        << "  X                    Nudge (PCE button II)\n"
+        << "  Space                Nudge (PCE button II)\n"
         << "  Backspace            Select\n"
         << "  Up / Down            PCE d-pad up and down\n"
         << "  Gamepad              First connected SDL gamepad\n"

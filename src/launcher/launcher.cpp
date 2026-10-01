@@ -1613,9 +1613,9 @@ void draw_bindings(int i, const Row& r, float x, float y, float h, bool focused)
 // The title's logo as the heading, if the launcher was built with it, LOGO_H
 // high. It is blown up by whole pixels to the next size past that and then
 // drawn smoothly down, so that its pixels stay square and sharp at any
-// scale. Its width is put in `w`.
+// scale.
 constexpr float LOGO_H = 104;
-bool draw_logo(float& w)
+bool draw_logo()
 {
 #ifdef DC_LAUNCHER_LOGO
     const float k = L(LOGO_H) / static_cast<float>(DC_LOGO_H);
@@ -1640,10 +1640,8 @@ bool draw_logo(float& w)
     const SDL_FRect to = {std::round(L(MARGIN)), std::round((L(HEADER_H) - h) / 2),
                           std::round(static_cast<float>(DC_LOGO_W) * k), h};
     SDL_RenderTexture(ui.ren, ui.logo, nullptr, &to);
-    w = to.w;
     return true;
 #else
-    (void)w;
     return false;
 #endif
 }
@@ -1658,24 +1656,8 @@ void draw()
     SDL_RenderClear(ui.ren);
     const auto W = static_cast<float>(ui.w), H = static_cast<float>(ui.h);
 
-    // The heading, and the file this is.
-    float tw, sy;
-    if (!draw_logo(tw)) {
-        text(ui.ren, ui.title, L(MARGIN), L(18), "DEVIL'S CRUSH", C_ACCENT);
-        tw = text_width(ui.title, "DEVIL'S CRUSH");
-        sy = L(18) + ui.title.ascent - ui.body.ascent;
-    } else {
-        sy = (L(HEADER_H) - ui.body.height) / 2;
-    }
-    // Just after the heading: "Config File:" whole, and as much of the path's
-    // end as fits after it.
-    static const char label[] = "Config File: ";
-    const float label_x = L(MARGIN) + tw + L(24), label_w = text_width(ui.body, label);
-    const float room = W - L(MARGIN) - label_x - label_w;
-    if (room > L(60)) {
-        text(ui.ren, ui.body, label_x, sy, label, C_TEXT);
-        text_tail(ui.body, label_x + label_w, sy, room, utf8_of(ui.ini), C_DIM);
-    }
+    // The heading.
+    if (!draw_logo()) text(ui.ren, ui.title, L(MARGIN), L(18), "DEVIL'S CRUSH", C_ACCENT);
 
     // The tabs.
     float x = L(MARGIN) - L(12);
