@@ -10798,17 +10798,30 @@ assignment_placement(
     return {640, 480};
 }
 
+// Names the game code actually running, so the emulated original is never
+// mistaken for the native default (or the reverse).
+[[nodiscard]] std::string playfield_title(
+    const bool cabinet_mode, const bool native_code)
+{
+    std::string title = cabinet_mode
+        ? "Devil's Crush - Cabinet Playfield"
+        : "Devil's Crush";
+    if (!native_code) {
+        title += cabinet_mode ? " (Emulated Original)" : " - Emulated Original";
+    }
+    return title;
+}
+
 void set_assignment_titles(
     SDL_Window* const playfield,
+    const std::string& playfield_name,
     AuxiliaryWindow& dmd,
     AuxiliaryWindow& backglass,
     const bool active,
     const AssignmentRole selected)
 {
     if (!active) {
-        (void)SDL_SetWindowTitle(
-            playfield,
-            "Devil's Crush - Cabinet Playfield Preview");
+        (void)SDL_SetWindowTitle(playfield, playfield_name.c_str());
         if (dmd.window != nullptr) {
             (void)SDL_SetWindowTitle(
                 dmd.window,
@@ -20494,10 +20507,10 @@ int run_windows_host(
     auto host_displays =
         cabinet_mode ? enumerate_host_displays() : HostDisplays{};
 
+    const auto window_title =
+        playfield_title(cabinet_mode, native_registry != nullptr);
     SDL_Window* window = SDL_CreateWindow(
-        cabinet_mode
-            ? "Devil's Crush - Cabinet Playfield Preview"
-            : "Devil's Crush - emulated baseline",
+        window_title.c_str(),
         cabinet_mode ? 720 : 1280,
         cabinet_mode ? 1280 : 720,
         SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE
@@ -21202,6 +21215,7 @@ int run_windows_host(
                 }
                 set_assignment_titles(
                     window,
+                    window_title,
                     dmd,
                     backglass,
                     assignment_active,
@@ -21261,6 +21275,7 @@ int run_windows_host(
                 }
                 set_assignment_titles(
                     window,
+                    window_title,
                     dmd,
                     backglass,
                     assignment_active,
