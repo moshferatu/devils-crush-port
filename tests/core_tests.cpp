@@ -63,6 +63,7 @@
 #include "devils_crush/native_runtime/emulator_oracle_adapter.hpp"
 #include "devils_crush/native_runtime/front_spider.hpp"
 #include "devils_crush/native_runtime/front_spider_capture.hpp"
+#include "devils_crush/native_runtime/game_math.hpp"
 #include "devils_crush/native_runtime/game_state.hpp"
 #include "devils_crush/native_runtime/gameplay_bootstrap.hpp"
 #include "devils_crush/native_runtime/gameplay_audio_dispatch.hpp"
@@ -115,6 +116,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -21903,6 +21905,266 @@ void test_native_contact_dispatch()
         "native contact dispatch releases the latch for higher response kinds");
 }
 
+void test_native_game_math()
+{
+    using devils_crush::native_runtime::ByteDivision;
+    using devils_crush::native_runtime::MultiplierPass;
+    using devils_crush::native_runtime::RandomGenerator;
+    using devils_crush::native_runtime::divide_24_bit;
+    using devils_crush::native_runtime::divide_byte;
+    using devils_crush::native_runtime::divide_to_fixed;
+    using devils_crush::native_runtime::divide_signed;
+    using devils_crush::native_runtime::multiply_and_accumulate;
+    using devils_crush::native_runtime::multiply_bytes;
+    using devils_crush::native_runtime::multiply_fixed;
+    using devils_crush::native_runtime::multiply_whole;
+    using devils_crush::native_runtime::square_root;
+
+    check(
+        multiply_fixed(384, -512) == -768 && multiply_fixed(-64, -64) == 16
+            && multiply_fixed(-1, 255) == 0,
+        "native game math multiplies 8.8 numbers and rounds toward zero");
+    check(
+        multiply_whole(-300, 7) == -2100 && multiply_bytes(255U, 255U) == 65025U,
+        "native game math multiplies whole numbers");
+    check(
+        divide_signed(-7, 2) == -3 && divide_signed(7, -2) == -3
+            && divide_signed(5, 0) == -1 && divide_signed(-5, 0) == 1
+            && divide_signed(-32768, -1) == -32768,
+        "native game math divides toward zero and has the game's zero-divisor results");
+    check(
+        divide_to_fixed(3U, 2U) == 0x0180U
+            && divide_byte(200U, 7U) == ByteDivision{.quotient = 28U, .remainder = 4U}
+            && divide_24_bit(1000000U, 10U)
+                == ByteDivision{.quotient = 100000U, .remainder = 0U},
+        "native game math divides unsigned numbers");
+
+    // Everything below compares the readable arithmetic with the routine
+    // models that were proven against the cartridge. Those read their
+    // operands from the same work-RAM cells the cartridge uses.
+    std::vector<std::uint8_t> work_ram(0x2000U);
+    const auto set_word = [&work_ram](const std::size_t offset, const std::uint16_t value) {
+        work_ram[offset] = static_cast<std::uint8_t>(value);
+        work_ram[offset + 1U] = static_cast<std::uint8_t>(value >> 8U);
+    };
+    const auto as_signed = [](const std::uint16_t bits) {
+        return std::bit_cast<std::int16_t>(bits);
+    };
+
+    // A fixed stream, so wide operands are sampled the same way on every run.
+    std::uint32_t sample_state = 0x2545F491U;
+    const auto sample = [&sample_state]() {
+        sample_state ^= sample_state << 13U;
+        sample_state ^= sample_state >> 17U;
+        sample_state ^= sample_state << 5U;
+        return sample_state;
+    };
+    constexpr std::array<std::uint16_t, 20> kEdgeWords{
+        0x0000U, 0x0001U, 0x0002U, 0x007FU, 0x0080U, 0x00FFU, 0x0100U,
+        0x0101U, 0x01FFU, 0x0280U, 0x7F00U, 0x7FFFU, 0x8000U, 0x8001U,
+        0x80FFU, 0xFE00U, 0xFF00U, 0xFF01U, 0xFFFEU, 0xFFFFU,
+    };
+    // Calls `visit` with every pair of edge words, then with sampled pairs.
+    const auto for_word_pairs = [&](const std::size_t sampled, const auto& visit) {
+        for (const auto first : kEdgeWords) {
+            for (const auto second : kEdgeWords) {
+                visit(first, second);
+            }
+        }
+        for (std::size_t index = 0U; index < sampled; ++index) {
+            const auto bits = sample();
+            visit(static_cast<std::uint16_t>(bits),
+                static_cast<std::uint16_t>(bits >> 16U));
+        }
+    };
+
+    std::size_t differences = 0U;
+    for (std::uint32_t pair = 0U; pair <= 0xFFFFU; ++pair) {
+        work_ram[0x002FU] = static_cast<std::uint8_t>(pair);
+        work_ram[0x0030U] = static_cast<std::uint8_t>(pair >> 8U);
+        dc_unsigned_byte_multiply proven{};
+        if (dc_multiply_unsigned_bytes(work_ram.data(), work_ram.size(), &proven) == 0
+            || multiply_bytes(work_ram[0x002FU], work_ram[0x0030U])
+                != static_cast<std::uint16_t>(
+                    proven.result_low | (proven.result_high << 8U))) {
+            ++differences;
+        }
+    }
+    check(differences == 0U,
+        "native byte multiply matches the proven routine for every pair of bytes");
+
+    differences = 0U;
+    for_word_pairs(200000U, [&](const std::uint16_t running_total, const std::uint16_t value) {
+        const auto factor = static_cast<std::uint8_t>(sample());
+        set_word(0x0042U, running_total);
+        set_word(0x002DU, value);
+        work_ram[0x0030U] = factor;
+        dc_unsigned_multiply_round proven{};
+        if (dc_multiply_unsigned_round(work_ram.data(), work_ram.size(), &proven) == 0
+            || multiply_and_accumulate(running_total, value, factor)
+                != MultiplierPass{
+                    .total = proven.result, .overflow = proven.multiplier_after}) {
+            ++differences;
+        }
+    });
+    check(differences == 0U,
+        "native multiplier pass matches the proven routine, overflow included");
+
+    differences = 0U;
+    std::size_t fitting_products = 0U;
+    std::size_t fitting_differences = 0U;
+    for_word_pairs(300000U, [&](const std::uint16_t value, const std::uint16_t factor) {
+        set_word(0x002DU, value);
+        set_word(0x002FU, factor);
+        dc_signed_fixed_multiply proven_fixed{};
+        dc_signed_word_multiply proven_whole{};
+        if (dc_multiply_signed_fixed(work_ram.data(), work_ram.size(), &proven_fixed) == 0
+            || dc_multiply_signed_words(work_ram.data(), work_ram.size(), &proven_whole) == 0
+            || multiply_fixed(as_signed(value), as_signed(factor))
+                != as_signed(proven_fixed.result)
+            || multiply_whole(as_signed(value), as_signed(factor))
+                != as_signed(proven_whole.result)) {
+            ++differences;
+        }
+        // When the true product fits in a signed 8.8 number, it is plain
+        // multiplication.
+        const auto exact = static_cast<std::int64_t>(as_signed(value)) * as_signed(factor);
+        if ((exact < 0 ? -exact : exact) < 0x00800000) {
+            ++fitting_products;
+            if (multiply_fixed(as_signed(value), as_signed(factor)) != exact / 256) {
+                ++fitting_differences;
+            }
+        }
+    });
+    check(differences == 0U,
+        "native signed multiplies match the proven routines, overflow included");
+    check(fitting_products > 1000U && fitting_differences == 0U,
+        "native 8.8 multiply is the exact product rounded toward zero when it fits");
+
+    differences = 0U;
+    for (std::uint32_t pair = 0U; pair <= 0xFFFFU; ++pair) {
+        const auto dividend = static_cast<std::uint8_t>(pair);
+        const auto divisor = static_cast<std::uint8_t>(pair >> 8U);
+        work_ram[0x0030U] = dividend;
+        work_ram[0x002FU] = divisor;
+        for (std::uint8_t carry = 0U; carry < 2U; ++carry) {
+            dc_unsigned_byte_division proven{};
+            if (dc_divide_unsigned_byte(
+                    work_ram.data(), work_ram.size(), carry, &proven) == 0
+                || divide_byte(dividend, divisor)
+                    != ByteDivision{
+                        .quotient = proven.quotient, .remainder = proven.remainder}) {
+                ++differences;
+            }
+        }
+    }
+    check(differences == 0U,
+        "native byte divide matches the proven routine for every pair of bytes");
+
+    differences = 0U;
+    for (std::size_t index = 0U; index < 200000U; ++index) {
+        const auto bits = sample();
+        // Every eighth sample divides by zero or by a byte above 128.
+        const auto divisor = index % 8U == 0U
+            ? static_cast<std::uint8_t>(index % 16U == 0U ? 0U : 0x80U | (bits >> 24U))
+            : static_cast<std::uint8_t>(bits >> 24U);
+        const auto dividend = bits & 0x00FFFFFFU;
+        work_ram[0x002EU] = static_cast<std::uint8_t>(dividend);
+        work_ram[0x002FU] = static_cast<std::uint8_t>(dividend >> 8U);
+        work_ram[0x0030U] = static_cast<std::uint8_t>(dividend >> 16U);
+        work_ram[0x002DU] = divisor;
+        dc_unsigned_24_division proven{};
+        if (dc_divide_unsigned_24(
+                work_ram.data(), work_ram.size(),
+                static_cast<std::uint8_t>(index & 1U), &proven) == 0
+            || divide_24_bit(dividend, divisor)
+                != ByteDivision{
+                    .quotient = proven.quotient, .remainder = proven.remainder}) {
+            ++differences;
+        }
+    }
+    check(differences == 0U,
+        "native 24-bit divide matches the proven routine, bad divisors included");
+
+    differences = 0U;
+    for (std::uint32_t divisor = 0U; divisor <= 0xFFU; ++divisor) {
+        work_ram[0x002DU] = static_cast<std::uint8_t>(divisor);
+        const auto compare = [&](const std::uint16_t dividend) {
+            set_word(0x002FU, dividend);
+            dc_signed_division proven{};
+            if (dc_divide_signed_word(
+                    work_ram.data(), work_ram.size(),
+                    static_cast<std::uint8_t>(dividend & 1U), &proven) == 0
+                || divide_signed(
+                       as_signed(dividend),
+                       std::bit_cast<std::int8_t>(static_cast<std::uint8_t>(divisor)))
+                    != as_signed(proven.result)) {
+                ++differences;
+            }
+        };
+        for (const auto dividend : kEdgeWords) {
+            compare(dividend);
+        }
+        for (std::uint32_t dividend = divisor; dividend <= 0xFFFFU; dividend += 17U) {
+            compare(static_cast<std::uint16_t>(dividend));
+        }
+    }
+    check(differences == 0U,
+        "native signed divide matches the proven routine for every divisor");
+
+    differences = 0U;
+    for_word_pairs(200000U, [&](const std::uint16_t dividend, const std::uint16_t sampled) {
+        // Half the sampled divisors are small, where the game uses this.
+        const auto divisor = (dividend & 1U) != 0U
+            ? static_cast<std::uint16_t>(sampled & 0x01FFU)
+            : sampled;
+        set_word(0x002FU, dividend);
+        set_word(0x002DU, divisor);
+        dc_unsigned_fixed_division proven{};
+        if (dc_divide_unsigned_fixed(work_ram.data(), work_ram.size(), &proven) == 0
+            || divide_to_fixed(dividend, divisor) != proven.result) {
+            ++differences;
+        }
+    });
+    check(differences == 0U,
+        "native 8.8 divide matches the proven routine, bad divisors included");
+
+    differences = 0U;
+    for (std::uint32_t value = 0U; value <= 0xFFFFU; ++value) {
+        const std::uint32_t root = square_root(static_cast<std::uint16_t>(value));
+        if (root * root > value || (root + 1U) * (root + 1U) <= value) {
+            ++differences;
+        }
+    }
+    check(differences == 0U,
+        "native square root is the whole root of every 16-bit value");
+
+    differences = 0U;
+    const auto compare_random = [&](const std::uint16_t seed, const std::uint8_t frame_counter) {
+        work_ram[0x0000U] = frame_counter;
+        set_word(0x022AU, seed);
+        dc_rng_update proven{};
+        RandomGenerator generator{.seed = seed};
+        const auto drawn = generator.next(frame_counter);
+        if (dc_advance_rng(work_ram.data(), work_ram.size(), &proven) == 0
+            || drawn != proven.seed_high
+            || generator.seed
+                != static_cast<std::uint16_t>(proven.seed_low | (proven.seed_high << 8U))) {
+            ++differences;
+        }
+    };
+    constexpr std::array<std::uint8_t, 5> kEdgeFrames{0x00U, 0x01U, 0x7FU, 0x80U, 0xFFU};
+    for (std::uint32_t seed = 0U; seed <= 0xFFFFU; ++seed) {
+        for (const auto frame_counter : kEdgeFrames) {
+            compare_random(static_cast<std::uint16_t>(seed), frame_counter);
+        }
+        compare_random(static_cast<std::uint16_t>(seed), static_cast<std::uint8_t>(sample()));
+    }
+    work_ram[0x0000U] = 0U;
+    check(differences == 0U,
+        "native random generator matches the proven routine for every seed");
+}
+
 void test_native_frame_oracle()
 {
     using devils_crush::native_runtime::FrameMismatch;
@@ -22364,6 +22626,7 @@ int main()
     test_native_giant_skeleton();
     test_native_gameplay_state();
     test_native_ball_motion();
+    test_native_game_math();
     test_native_collision_retry();
     test_native_collision_response();
     test_native_collision_bounds();

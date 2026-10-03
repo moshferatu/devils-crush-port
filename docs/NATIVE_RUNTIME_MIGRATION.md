@@ -1028,6 +1028,15 @@ owned collision asset.
   An active Face stays with its current owner until every controller/animation
   state can be recovered. This includes form six: its visible open state begins
   a retained mouth continuation rather than a restartable native boundary.
+- `game_math` holds the arithmetic the game shares between physics,
+  collisions and actors: byte, whole-number and 8.8 multiplies, the four
+  divides, the square root and the random generator. Each is an ordinary
+  function of its operands, with no work-RAM cells or scratch values in its
+  interface. The core tests compare every one with the routine model proven
+  against the cartridge (`dc_multiply_*`, `dc_divide_*`, `dc_advance_rng`),
+  over every input where that is practical and over edge and sampled inputs
+  otherwise, including zero divisors and overflowing products. The square root
+  is checked against its definition for all 65,536 values.
 
 The foundation has ROM-free core tests. The runtime selector, capture seeding,
 table asset decoding, collision-map/target integration, and target-specific

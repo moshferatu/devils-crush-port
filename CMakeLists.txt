@@ -48,6 +48,7 @@ add_library(
     src/native_runtime/ball_capture.cpp
     src/native_runtime/ball_frame_schedule.cpp
       src/native_runtime/ball_physics.cpp
+    src/native_runtime/game_math.cpp
     src/native_runtime/bonus_stage_launch.cpp
     src/native_runtime/bonus_stage_4.cpp
     src/native_runtime/bonus_stage_4_capture.cpp
