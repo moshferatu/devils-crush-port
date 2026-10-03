@@ -115,8 +115,12 @@ identity, so each links to the nearest previous sprite of the same size within
 the table's 16-pixel teleport limit, and every sprite's step correction is
 bounded to the ball's half pixel. A sprite that changes pattern while breaking
 from its own last step by more than two pixels, as a flipper's next pose does
-eight pixels along, is a cut: it is shown as drawn, not slid and blended. The
-cut sprites, with the new and vanished sprites whose drawn pixels touch them,
+eight pixels along, is a cut: it is shown as drawn, not slid and blended. A
+sprite that changed pattern within that distance is cut as well when its drawn
+pixels touch a cut or new sprite, since a new pose redraws the whole thing;
+otherwise one piece of the old pose lingers for a frame inside the new one, as
+a dragon head's did in the first room when the heads drop at the end of the
+fade-in. The cut sprites, with the new and vanished sprites whose drawn pixels touch them,
 make up one flipper changing pose, and that group is measured for its turn;
 two flippers whose sprite boxes sit edge to edge stay apart because their
 pixels do not meet. On the scripted route every room frame after the first is

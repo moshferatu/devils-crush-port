@@ -51,6 +51,29 @@ constexpr std::uint8_t kSlotLimit =
         | (((green << 2U) | (green >> 4U)) << 8U) | ((blue << 3U) | (blue >> 2U));
 }
 
+// Drawn pixels that meet, diagonally included. Sprite boxes alone are not
+// enough: two flippers' pieces can sit edge to edge.
+[[nodiscard]] bool drawn_pixels_touch(const TableMotionSprite& a, const TableMotionSprite& b)
+{
+    if (a.x > b.x + b.image.width || b.x > a.x + a.image.width
+        || a.y > b.y + b.image.height || b.y > a.y + a.image.height) return false;
+    const auto drawn_at = [](const TableMotionSprite& sprite, int x, int y) {
+        x -= sprite.x;
+        y -= sprite.y;
+        return x >= 0 && y >= 0 && x < sprite.image.width && y < sprite.image.height
+            && sprite.image.pixels[static_cast<std::size_t>(y) * sprite.image.width + x] != 0U;
+    };
+    for (int row = 0; row < a.image.height; ++row) {
+        for (int column = 0; column < a.image.width; ++column) {
+            if (!drawn_at(a, a.x + column, a.y + row)) continue;
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx)
+                    if (drawn_at(b, a.x + column + dx, a.y + row + dy)) return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 std::uint32_t pce_framebuffer_color(const std::uint16_t raw_color) noexcept
@@ -238,10 +261,13 @@ std::optional<TableMotionFrame> ViewportMotionTracker::update(
     std::vector<bool> linked(pieces.size());
     // The previous piece a pose-cut piece was linked to.
     std::vector<std::ptrdiff_t> cut_from(pieces.size(), -1);
+    // The previous piece each linked piece carries on from.
+    std::vector<std::ptrdiff_t> link_from(pieces.size(), -1);
     for (const auto& [cost, now, then] : candidates) {
         if (linked[now] || claimed[then]) continue;
         linked[now] = true;
         claimed[then] = true;
+        link_from[now] = static_cast<std::ptrdiff_t>(then);
         auto& piece = pieces[now];
         const auto& old = previous_[then];
         piece.slot = old.slot;
@@ -273,6 +299,29 @@ std::optional<TableMotionFrame> ViewportMotionTracker::update(
         if (++generation_ == 0U) generation_ = 1U;
         pieces[now].generation = generation_;
     }
+    // A thing drawn in a new pose is redrawn whole. One of its sprites may
+    // land close enough to an old one to pass for it moving; next to sprites
+    // that were cut or are new, its changed pattern is the new pose as well.
+    for (bool grew = true; grew;) {
+        grew = false;
+        for (std::size_t now = 0; now < pieces.size(); ++now) {
+            if (link_from[now] < 0 || cut_from[now] >= 0
+                || pieces[now].pattern == previous_[static_cast<std::size_t>(link_from[now])].pattern) {
+                continue;
+            }
+            for (std::size_t other = 0; other < pieces.size(); ++other) {
+                if ((linked[other] && cut_from[other] < 0)
+                    || !drawn_pixels_touch(frame.sprites[now], frame.sprites[other])) continue;
+                if (++generation_ == 0U) generation_ = 1U;
+                pieces[now].generation = generation_;
+                pieces[now].step_x = 0;
+                pieces[now].step_y = 0;
+                cut_from[now] = link_from[now];
+                grew = true;
+                break;
+            }
+        }
+    }
     if (previous_sprites_.size() == previous_.size()) {
         measure_swings(pieces, linked, claimed, cut_from, frame.sprites);
     }
@@ -292,27 +341,6 @@ void ViewportMotionTracker::measure_swings(const std::vector<Piece>& pieces,
     const std::vector<bool>& linked, const std::vector<bool>& claimed,
     const std::vector<std::ptrdiff_t>& cut_from, std::vector<TableMotionSprite>& sprites) const
 {
-    // Drawn pixels that meet, diagonally included. Sprite boxes alone are
-    // not enough: two flippers' pieces can sit edge to edge.
-    const auto touches = [](const TableMotionSprite& a, const TableMotionSprite& b) {
-        if (a.x > b.x + b.image.width || b.x > a.x + a.image.width
-            || a.y > b.y + b.image.height || b.y > a.y + a.image.height) return false;
-        const auto drawn_at = [](const TableMotionSprite& sprite, int x, int y) {
-            x -= sprite.x;
-            y -= sprite.y;
-            return x >= 0 && y >= 0 && x < sprite.image.width && y < sprite.image.height
-                && sprite.image.pixels[static_cast<std::size_t>(y) * sprite.image.width + x] != 0U;
-        };
-        for (int row = 0; row < a.image.height; ++row) {
-            for (int column = 0; column < a.image.width; ++column) {
-                if (!drawn_at(a, a.x + column, a.y + row)) continue;
-                for (int dy = -1; dy <= 1; ++dy)
-                    for (int dx = -1; dx <= 1; ++dx)
-                        if (drawn_at(b, a.x + column + dx, a.y + row + dy)) return true;
-            }
-        }
-        return false;
-    };
     // Gathers everything reachable from the seeds through touching pieces
     // that may belong to the same flipper.
     const auto grow = [&](const std::vector<TableMotionSprite>& from, std::vector<bool>& members,
@@ -324,7 +352,7 @@ void ViewportMotionTracker::measure_swings(const std::vector<Piece>& pieces,
             const auto member = pending.back();
             pending.pop_back();
             for (std::size_t other = 0; other < from.size(); ++other) {
-                if (members[other] || !may_join(other) || !touches(from[member], from[other])) continue;
+                if (members[other] || !may_join(other) || !drawn_pixels_touch(from[member], from[other])) continue;
                 members[other] = true;
                 pending.push_back(other);
             }

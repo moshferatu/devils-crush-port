@@ -11898,6 +11898,22 @@ void test_viewport_motion()
             && higher->sprites[0].actor.type == rest->sprites[0].actor.type,
         "a new pattern drawn away from a sprite's step is a pose cut, not motion");
 
+    // A new pose redraws all of a thing's sprites. One that lands a pixel
+    // from an old sprite is still part of the new pose, not that sprite moving.
+    ViewportMotionTracker whole;
+    static_cast<void>(update(whole, sat_with({{100, 100}, {116, 100}, {20, 50}}), picture_with({})));
+    static_cast<void>(update(whole, sat_with({{100, 100}, {116, 100}, {20, 50}}),
+        picture_with({{100, 100}, {116, 100}, {20, 50}})));
+    const auto before = update(whole, sat_with({{100, 92}, {116, 99}, {21, 50}}, kSecondPose),
+        picture_with({{100, 100}, {116, 100}, {20, 50}}));
+    const auto redrawn = update(whole, sat_with({{100, 92}, {116, 99}, {21, 50}}, kSecondPose),
+        picture_with({{100, 92}, {116, 99}, {21, 50}}));
+    check(before && redrawn && redrawn->sprites.size() == 3U
+            && redrawn->sprites[2].actor.type != before->sprites[2].actor.type
+            && redrawn->sprites[1].actor.type != before->sprites[1].actor.type
+            && redrawn->sprites[0].actor.type == before->sprites[0].actor.type,
+        "a sprite redrawn beside a pose cut is cut with it, and one elsewhere is not");
+
     // Seventeen sprites on one line: hardware shows the first sixteen halves.
     ViewportMotionTracker crowded;
     const auto row = sat_with({{0, 100}, {15, 100}, {30, 100}, {45, 100}, {60, 100},
