@@ -11745,17 +11745,20 @@ void test_viewport_motion()
     std::vector<std::uint16_t> vram(32768U);
     std::fill_n(vram.begin(), 32U * 32U, std::uint16_t{0x0100U});
     std::fill_n(vram.begin() + 0x4000, 16, std::uint16_t{0xFFFFU});
+    // Pattern $101 draws the same square, as a second pose.
+    std::fill_n(vram.begin() + 0x4040, 16, std::uint16_t{0xFFFFU});
     std::vector<std::uint16_t> palette(512U);
     palette[0] = kBackdrop;
     palette[257] = kSpriteColor;
 
-    const auto sat_with = [](std::initializer_list<std::pair<int, int>> sprites) {
+    const auto sat_with = [](std::initializer_list<std::pair<int, int>> sprites,
+                              const std::uint16_t pattern = 0x0200U) {
         std::vector<std::uint16_t> sat(256U);
         std::size_t index = 0;
         for (const auto& [x, y] : sprites) {
             sat[index * 4U] = static_cast<std::uint16_t>(y + 0x40);
             sat[index * 4U + 1U] = static_cast<std::uint16_t>(x + 0x20);
-            sat[index * 4U + 2U] = 0x0200U;
+            sat[index * 4U + 2U] = pattern;
             sat[index * 4U + 3U] = 0x0080U;
             ++index;
         }
@@ -11812,6 +11815,26 @@ void test_viewport_motion()
     check(jumped && relinked
             && jumped->sprites[0].actor.type != relinked->sprites[0].actor.type,
         "a sprite that jumps beyond the link distance is a cut");
+
+    // A flipper's poses are new patterns drawn eight pixels apart; a walker's
+    // next pose continues its step.
+    constexpr std::uint16_t kSecondPose = 0x0202U;
+    ViewportMotionTracker poses;
+    static_cast<void>(update(poses, sat_with({{100, 100}, {20, 50}}), picture_with({})));
+    const auto rest = update(poses, sat_with({{100, 100}, {21, 50}}),
+        picture_with({{100, 100}, {20, 50}}));
+    static_cast<void>(update(poses, sat_with({{100, 92}, {22, 50}}, kSecondPose),
+        picture_with({{100, 100}, {21, 50}})));
+    const auto raised = update(poses, sat_with({{100, 84}, {23, 50}}),
+        picture_with({{100, 92}, {22, 50}}));
+    const auto higher = update(poses, sat_with({{100, 84}, {23, 50}}),
+        picture_with({{100, 84}, {23, 50}}));
+    check(rest && raised && higher && raised->sprites.size() == 2U && higher->sprites.size() == 2U
+            && raised->sprites[1].actor.type != rest->sprites[1].actor.type
+            && higher->sprites[1].actor.type != raised->sprites[1].actor.type
+            && raised->sprites[0].actor.type == rest->sprites[0].actor.type
+            && higher->sprites[0].actor.type == rest->sprites[0].actor.type,
+        "a new pattern drawn away from a sprite's step is a pose cut, not motion");
 
     // Seventeen sprites on one line: hardware shows the first sixteen halves.
     ViewportMotionTracker crowded;

@@ -19,6 +19,9 @@ constexpr int kSpriteYBias = 0x40;
 constexpr int kSpriteHalvesPerLine = 16;
 // The table's own link distance (table_art_linked): anything further is a cut.
 constexpr int kLinkDistance = 16;
+// A new pattern may change a moving sprite's step by this much, as the step
+// filter's own bound allows; further is a pose drawn somewhere else.
+constexpr int kPoseStepChange = 2;
 constexpr std::uint8_t kFirstSlot = 1U;
 constexpr std::uint8_t kSlotLimit =
     static_cast<std::uint8_t>(cabinet::kActorSlotCount);
@@ -231,9 +234,22 @@ std::optional<TableMotionFrame> ViewportMotionTracker::update(
         if (linked[now] || claimed[then]) continue;
         linked[now] = true;
         claimed[then] = true;
-        pieces[now].slot = previous_[then].slot;
-        pieces[now].generation = previous_[then].generation;
-        used[pieces[now].slot] = true;
+        auto& piece = pieces[now];
+        const auto& old = previous_[then];
+        piece.slot = old.slot;
+        used[piece.slot] = true;
+        const int step_x = piece.x - old.x;
+        const int step_y = piece.y - old.y;
+        if (piece.pattern != old.pattern
+            && (std::abs(step_x - old.step_x) > kPoseStepChange
+                || std::abs(step_y - old.step_y) > kPoseStepChange)) {
+            if (++generation_ == 0U) generation_ = 1U;
+            piece.generation = generation_;
+            continue;
+        }
+        piece.generation = old.generation;
+        piece.step_x = step_x;
+        piece.step_y = step_y;
     }
     std::uint8_t next_slot = kFirstSlot;
     for (std::size_t now = 0; now < pieces.size(); ++now) {

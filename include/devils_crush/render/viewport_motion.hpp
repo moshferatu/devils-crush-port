@@ -52,7 +52,10 @@ struct ViewportPicture {
 // sprite of the same size within the table's own sixteen-pixel teleport limit.
 // Linked sprites keep a slot and generation, which become the motion frame's
 // actor slot and type; a new sprite takes a fresh generation, so it never
-// inherits a vanished sprite's motion.
+// inherits a vanished sprite's motion. A sprite that changes pattern and, with
+// it, breaks from its own last step -- a flipper's next pose, drawn eight
+// pixels along -- is a pose change, not motion, and takes a fresh generation
+// as well, so it is shown as the game drew it instead of slid and blended.
 class ViewportMotionTracker {
 public:
     void reset() noexcept;
@@ -69,6 +72,9 @@ private:
         int y = 0;
         std::uint16_t pattern = 0;
         std::uint16_t flags = 0;
+        // The step from the linked sprite, or zero for a new pose.
+        int step_x = 0;
+        int step_y = 0;
     };
 
     std::vector<std::uint16_t> shown_sat_;
