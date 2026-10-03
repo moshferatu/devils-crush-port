@@ -5,9 +5,23 @@
 #include "devils_crush/cabinet/cabinet_state.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <optional>
+#include <span>
 #include <utility>
+#include <vector>
 
 namespace devils_crush::render {
+
+// How far to turn a swinging actor's current pose, clockwise about the pivot
+// in frame coordinates, to stand at its previous pose's angle. Between frames
+// the presenter turns it through degrees * (1 - alpha), so the game's own
+// pose is shown exactly at each frame and the steps between become a swing.
+struct TableSwing {
+    float pivot_x = 0.0F;
+    float pivot_y = 0.0F;
+    float degrees = 0.0F;
+};
 
 // Presentation-only snapshots. Sprite order is the software compositor's
 // back-to-front order; pieces share their actor's motion, not SAT indices.
@@ -16,6 +30,14 @@ struct TableMotionSprite {
     int x = 0;
     int y = 0;
     bool foreground = true;
+    // A flipper: the game draws its swing as a few poses, so a pose change is
+    // drawn as its artwork turning about its pivot rather than a crossfade.
+    // The presenter measures the turn by actor slot (table_swing).
+    bool swings = false;
+    // The turn this piece is drawn with between frames, shared by every piece
+    // of its flipper. Bonus rooms have no actor slots, so their tracker
+    // measures it itself.
+    std::optional<TableSwing> swing;
     ArgbImage image;
 };
 
@@ -80,5 +102,18 @@ inline std::pair<float, float> table_motion_offset(
     const float remaining = 1.0F - std::clamp(alpha, 0.0F, 1.0F);
     return {dx * remaining, dy * remaining};
 }
+
+// Turns at most this far, in degrees, are drawn as a flipper's next pose.
+inline constexpr float kLargestTableSwing = 60.0F;
+
+// Measures the turn from the long axis of every drawn pixel of the slot's
+// pieces in each frame, and the pivot as the one point that turn leaves in
+// place, so no flipper's angles or pivot are written down by hand. Nothing is
+// returned unless the actor swings, stayed put and is linked, and the step is
+// a turn of between one and sixty degrees about a point near it.
+[[nodiscard]] std::optional<TableSwing> table_swing(
+    std::span<const TableMotionSprite> previous,
+    std::span<const TableMotionSprite> current,
+    std::uint8_t slot);
 
 } // namespace devils_crush::render

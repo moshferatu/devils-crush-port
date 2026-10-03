@@ -3,6 +3,7 @@
 
 #include "devils_crush/render/table_motion.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -56,6 +57,9 @@ struct ViewportPicture {
 // it, breaks from its own last step -- a flipper's next pose, drawn eight
 // pixels along -- is a pose change, not motion, and takes a fresh generation
 // as well, so it is shown as the game drew it instead of slid and blended.
+// The sprites cut that way together, with the new and vanished sprites that
+// touch them, are one flipper changing pose; when their two poses measure as
+// a turn (table_swing), every piece carries it and the presenter swings them.
 class ViewportMotionTracker {
 public:
     void reset() noexcept;
@@ -77,8 +81,14 @@ private:
         int step_y = 0;
     };
 
+    void measure_swings(const std::vector<Piece>& pieces, const std::vector<bool>& linked,
+        const std::vector<bool>& claimed, const std::vector<std::ptrdiff_t>& cut_from,
+        std::vector<TableMotionSprite>& sprites) const;
+
     std::vector<std::uint16_t> shown_sat_;
     std::vector<Piece> previous_;
+    // The previous update's pieces as drawn, to measure a pose change against.
+    std::vector<TableMotionSprite> previous_sprites_;
     std::uint16_t scroll_x_ = 0;
     std::uint16_t scroll_y_ = 0;
     std::uint8_t generation_ = 0;

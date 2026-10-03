@@ -57,8 +57,7 @@ replays still run at the original 59.8261 Hz.
 Like the Zombies Ate My Neighbors port's layered renderer, this uses separate
 sprite artwork and actor positions. Pieces of an actor share one motion offset.
 Previous and current artwork are aligned to that same interpolated position,
-then the two complete compositions are blended. This smooths flipper poses,
-rotating artwork, giant-face transformations, flashes and palette effects
+then the two complete compositions are blended. This smooths rotating artwork, giant-face transformations, flashes and palette effects
 without giving moving actors a second trailing position. Rendering into a target at least four times
 the original resolution preserves fractional-pixel motion. Sprite order,
 transparency and the table's background-priority mask remain intact.
@@ -74,9 +73,35 @@ overshoot for one tick; no game coordinates are changed.
 Interpolation adds up to one game frame (about 17 ms) of visual delay. F6 is
 available for comparing the feel, especially when timing flippers. Animation
 artwork transitions use a short crossfade, not generated geometric rotation
-frames. Fast pose changes can therefore look briefly softer. Teleports, newly visible
-actors, scene changes, quick-state restores and DMD-owned playfield holds clear
-or bypass motion history.
+frames. Fast pose changes can therefore look briefly softer. Teleports, newly
+visible actors, scene changes, quick-state restores and DMD-owned playfield
+holds clear or bypass motion history.
+
+Flippers are the exception, on the table and in the bonus stages. The game
+draws a flip as four poses, one per frame, so a crossfade only blurs each step.
+Instead, between frames the current pose is drawn turned back toward the
+previous pose's angle about the flipper's pivot, through
+`degrees * (1 - alpha)`, so the flip is a continuous swing and every game frame
+still shows the game's own pose exactly. `table_swing()` measures each step
+from the pixels: the turn is the change in the long axis of the flipper's
+drawn pixels, and the pivot is the one point that turn leaves in place. The
+bottom flippers' poses measure about +24, +2, -21 and -33 degrees, and every
+step puts the pivot within two pixels of the centre of the round end.
+
+At 240 Hz that is four angles per game frame, each a sharp flipper about five
+degrees from the last, so each present also draws a fading trail of the angles
+swept since the previous present (`trail_from`). The trail reaches back into
+the previous frame only when the flipper was already turning the same way, and
+a draw at a frame's own alpha with no present before it, as the motion checks
+make, has no trail and is pixel-exact. Collisions still use only the game's
+poses.
+
+A turn is accepted only from a shape that is long and thin, whose pivot lies on
+its own pixels, and whose previous pose, turned, lands at least 85% on the
+current one. Every flipper pose spreads at least 7.24 times further along its
+axis than across; the bonus-room shapes that otherwise measure as a turn, the
+first room's swinging dragon heads, reach 6.23 at most and fit as poorly as
+74%, so they keep their own redrawn poses.
 
 Bonus stages are drawn from separate pieces as well: the room's background,
 read from the BAT at the scroll registers, and its 64 hardware sprites. The
@@ -90,9 +115,12 @@ identity, so each links to the nearest previous sprite of the same size within
 the table's 16-pixel teleport limit, and every sprite's step correction is
 bounded to the ball's half pixel. A sprite that changes pattern while breaking
 from its own last step by more than two pixels, as a flipper's next pose does
-eight pixels along, is a cut: it is shown as drawn, not slid and blended. On
-the scripted route every room frame after
-the first is drawn from pieces, in all six stages.
+eight pixels along, is a cut: it is shown as drawn, not slid and blended. The
+cut sprites, with the new and vanished sprites whose drawn pixels touch them,
+make up one flipper changing pose, and that group is measured for its turn;
+two flippers whose sprite boxes sit edge to edge stay apart because their
+pixels do not meet. On the scripted route every room frame after the first is
+drawn from pieces, in all six stages.
 
 Title/high-score screens and the base single-window emulated framebuffer still
 blend consecutive complete pictures. These screens do not expose separate
@@ -109,7 +137,8 @@ pieces, background priority, appearance changes, teleports and scene cuts.
 The same check also verifies exact endpoints and distinct blended pictures on
 the title screen and in all six bonus stages, and that each room's pieces
 reproduce the emulator's picture at the endpoint, move between frames, and
-cover at least 95% of its frames.
+cover at least 95% of its frames. Both routes pulse the flippers once the ball
+is in play, and fail unless the table's flippers and each room's swing.
 `--cabinet-motion-gpu-check <directory>` runs the same readback checks using the
 actual graphics renderer in a hidden window.
 

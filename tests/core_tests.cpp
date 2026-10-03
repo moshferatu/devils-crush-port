@@ -116,6 +116,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdlib>
 #include <filesystem>
@@ -123,6 +124,7 @@
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <numbers>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -11731,6 +11733,66 @@ void test_table_motion()
         "new motion history starts without a correction");
 }
 
+void test_table_swing()
+{
+    using devils_crush::render::table_swing;
+    using devils_crush::render::TableMotionSprite;
+    // A tapering flipper with a round end about image point (12, 32), drawn
+    // at the given clockwise angle, as one 64-by-64 piece at (40, 600).
+    const auto flipper = [](const double degrees) {
+        TableMotionSprite sprite;
+        sprite.actor = {.slot = 4, .type = 0x80, .appearance = 1, .world_x = 98, .world_y = 677};
+        sprite.x = 40;
+        sprite.y = 600;
+        sprite.swings = true;
+        sprite.image = {64, 64, std::vector<std::uint32_t>(64U * 64U)};
+        const double angle = degrees * std::numbers::pi / 180.0;
+        for (int row = 0; row < 64; ++row) {
+            for (int column = 0; column < 64; ++column) {
+                const double x = column + 0.5 - 12.0;
+                const double y = row + 0.5 - 32.0;
+                const double along = x * std::cos(angle) + y * std::sin(angle);
+                const double across = y * std::cos(angle) - x * std::sin(angle);
+                const double half = 5.0 - 3.0 * std::clamp(along / 40.0, 0.0, 1.0);
+                if ((along >= 0.0 && along <= 40.0 && std::abs(across) <= half)
+                    || std::hypot(x, y) <= 5.0) {
+                    sprite.image.pixels[static_cast<std::size_t>(row) * 64U + column] = 0xFFFFFFFFU;
+                }
+            }
+        }
+        return sprite;
+    };
+    const std::vector rest{flipper(24.0)};
+    const std::vector raised{flipper(2.0)};
+    const auto swing = table_swing(rest, raised, 4);
+    check(swing && std::abs(swing->degrees - 22.0F) < 1.0F
+            && std::abs(swing->pivot_x - 52.0F) < 1.0F && std::abs(swing->pivot_y - 632.0F) < 1.0F,
+        "a flipper's pose change is measured as a turn about its round end");
+    const auto back = table_swing(raised, rest, 4);
+    check(back && swing && std::abs(back->degrees + swing->degrees) < 0.01F,
+        "a flipper falling back turns the other way");
+    check(!table_swing(raised, raised, 4), "a flipper holding its pose does not turn");
+    auto moved = raised;
+    moved[0].actor.world_x += 2;
+    check(!table_swing(rest, moved, 4), "an actor that moved is not swung");
+    auto plain = raised;
+    plain[0].swings = false;
+    check(!table_swing(rest, plain, 4), "only flippers swing");
+    check(!table_swing(rest, raised, 5), "a slot without pieces does not swing");
+
+    // A stubby creature redrawn a little further round is not a flipper.
+    const auto block = [&](const int lean) {
+        auto sprite = flipper(0.0);
+        std::ranges::fill(sprite.image.pixels, 0U);
+        for (int row = 8; row < 40; ++row)
+            for (int column = 20 + lean * (row - 8) / 32; column < 36 + lean * (row - 8) / 32; ++column)
+                sprite.image.pixels[static_cast<std::size_t>(row) * 64U + column] = 0xFFFFFFFFU;
+        return sprite;
+    };
+    check(!table_swing(std::vector{block(0)}, std::vector{block(8)}, 4),
+        "a stubby shape that leans is not swung");
+}
+
 void test_viewport_motion()
 {
     using devils_crush::render::pce_framebuffer_color;
@@ -22233,6 +22295,7 @@ int main()
     test_dmd_attract_transition();
     test_dmd_name_entry();
     test_table_motion();
+    test_table_swing();
     test_viewport_motion();
     test_table_palette_cache();
     test_native_registry();

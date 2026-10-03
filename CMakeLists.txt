@@ -152,6 +152,7 @@ add_library(
     src/render/pce_background.cpp
     src/render/pce_sprite_overlay.cpp
     src/render/sharp_pixel_scaler.cpp
+    src/render/table_motion.cpp
     src/render/table_palette_cache.cpp
     src/render/title_logo.cpp
     src/render/viewport_motion.cpp

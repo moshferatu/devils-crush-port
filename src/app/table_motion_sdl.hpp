@@ -7,6 +7,9 @@ struct TableMotionLayer {
         devils_crush::cabinet::kActorSlotCount> previous{};
     std::array<std::pair<float, float>, devils_crush::cabinet::kActorSlotCount> correction{};
     std::array<std::pair<float, float>, devils_crush::cabinet::kActorSlotCount> prior_correction{};
+    // The previous frame's turn per slot, so a trail only reaches back into a
+    // swing that was already going the same way.
+    std::array<float, devils_crush::cabinet::kActorSlotCount> prior_turn{};
     SourceTexture background;
     SourceTexture atlas;
 
@@ -16,8 +19,24 @@ struct TableMotionLayer {
         previous = {};
         correction = {};
         prior_correction = {};
+        prior_turn = {};
         destroy_source(background);
         destroy_source(atlas);
+    }
+
+    // Gives each table flipper's pieces the turn from this frame's pose to
+    // the next one's. Bonus-room pieces arrive with theirs already measured.
+    void measure_swings(devils_crush::render::TableMotionFrame& next) const
+    {
+        std::array<bool, devils_crush::cabinet::kActorSlotCount> measured{};
+        for (const auto& sprite : next.sprites) {
+            const auto slot = sprite.actor.slot;
+            if (!sprite.swings || sprite.swing || measured[slot]) continue;
+            measured[slot] = true;
+            const auto turn = devils_crush::render::table_swing(frame.sprites, next.sprites, slot);
+            for (auto& piece : next.sprites)
+                if (piece.actor.slot == slot) piece.swing = turn;
+        }
     }
 
     bool update(SDL_Renderer* renderer,
@@ -29,6 +48,10 @@ struct TableMotionLayer {
         previous = {};
         for (const auto& sprite : frame.sprites)
             previous[sprite.actor.slot] = sprite.actor;
+        prior_turn = {};
+        for (const auto& sprite : frame.sprites)
+            if (sprite.swing) prior_turn[sprite.actor.slot] = sprite.swing->degrees;
+        measure_swings(next);
         frame = std::move(next);
         for (const auto& sprite : frame.sprites) {
             const auto slot = sprite.actor.slot;
@@ -54,7 +77,12 @@ struct TableMotionLayer {
             && SDL_SetTextureBlendMode(atlas.texture, SDL_BLENDMODE_BLEND);
     }
 
-    bool draw(SDL_Renderer* renderer, int width, int height, float alpha, bool even = true) const
+    // `trail_from` is the alpha the previous present was drawn at, negative
+    // when it fell in the previous frame. A swinging flipper leaves a fading
+    // trail back to where that present showed it, so the angles a display
+    // has no present for are swept rather than skipped.
+    bool draw(SDL_Renderer* renderer, int width, int height, float alpha, bool even = true,
+        float trail_from = 2.0F) const
     {
         if (!background.texture || !atlas.texture) return false;
         if (!SDL_RenderTexture(renderer, background.texture, nullptr, nullptr)) return false;
@@ -82,6 +110,9 @@ struct TableMotionLayer {
                     (right - left) * sx, (bottom - top) * sy};
                 return SDL_RenderTexture(renderer, atlas.texture, &src, &dst);
             };
+            if (sprite.foreground && sprite.swing
+                && !draw_swing(renderer, sprite, x, y, ax, ay, sx, sy, alpha, trail_from)) return false;
+            if (sprite.foreground && sprite.swing) continue;
             if (sprite.foreground) {
                 if (!piece(x, y, x + sprite.image.width, y + sprite.image.height)) return false;
                 continue;
@@ -108,6 +139,48 @@ struct TableMotionLayer {
             }
         }
         return true;
+    }
+
+    // Every piece of a flipper turns about its one pivot. At the frame's own
+    // alpha with no trail this is the plain, pixel-exact draw.
+    bool draw_swing(SDL_Renderer* renderer, const devils_crush::render::TableMotionSprite& sprite,
+        float x, float y, float ax, float ay, float sx, float sy, float alpha, float trail_from) const
+    {
+        constexpr float kLongestTrail = 0.5F;
+        constexpr float kTrailSpacing = 2.0F;
+        constexpr int kMostTrailCopies = 16;
+        const auto& turn = *sprite.swing;
+        const float t = std::clamp(alpha, 0.0F, 1.0F);
+        float from = std::clamp(trail_from, t - kLongestTrail, t);
+        if (from < 0.0F && prior_turn[sprite.actor.slot] * turn.degrees <= 0.0F) from = std::max(from, 0.0F);
+        from = std::min(from, t);
+        const auto angle_at = [&](float a) { return turn.degrees * (1.0F - a); };
+        const float w = static_cast<float>(sprite.image.width);
+        const float h = static_cast<float>(sprite.image.height);
+        const float px = turn.pivot_x - x;
+        const float py = turn.pivot_y - y;
+        float reach = 0.0F;
+        for (const auto [cx, cy] : {std::pair{0.0F, 0.0F}, {w, 0.0F}, {0.0F, h}, {w, h}})
+            reach = std::max(reach, std::hypot((cx - px) * sx, (cy - py) * sy));
+        const float arc = reach * std::abs(angle_at(from) - angle_at(t)) * std::numbers::pi_v<float> / 180.0F;
+        const int copies = std::min(kMostTrailCopies, static_cast<int>(std::ceil(arc / kTrailSpacing)));
+        const SDL_FRect src{ax, ay, w, h};
+        const SDL_FRect dst{x * sx, y * sy, w * sx, h * sy};
+        const SDL_FPoint center{px * sx, py * sy};
+        const auto turned = [&](float a, float opacity) {
+            return SDL_SetTextureAlphaModFloat(atlas.texture, opacity)
+                && SDL_RenderTextureRotated(renderer, atlas.texture, &src, &dst,
+                    angle_at(a), &center, SDL_FLIP_NONE);
+        };
+        bool ok = true;
+        // Oldest and faintest first, so the newest angles lie on top.
+        for (int copy = copies; copy >= 1 && ok; --copy)
+            ok = turned(t - (t - from) * static_cast<float>(copy) / copies,
+                1.0F - static_cast<float>(copy) / (copies + 1));
+        ok = ok && (angle_at(t) != 0.0F ? turned(t, 1.0F)
+            : SDL_SetTextureAlphaModFloat(atlas.texture, 1.0F)
+                && SDL_RenderTexture(renderer, atlas.texture, &src, &dst));
+        return SDL_SetTextureAlphaModFloat(atlas.texture, 1.0F) && ok;
     }
 };
 
@@ -148,12 +221,16 @@ struct ArtworkBlendTarget {
 struct TableMotionPresenter : TableMotionLayer {
     TableMotionLayer old_art;
     ArtworkBlendTarget blend;
+    // The alpha of the last draw: within [0, 1] for this frame, negative for
+    // the frame before, and above one when neither drew.
+    float drawn_alpha = 2.0F;
 
     void reset()
     {
         TableMotionLayer::reset();
         old_art.reset();
         blend.reset();
+        drawn_alpha = 2.0F;
     }
 
     bool update(SDL_Renderer* renderer, devils_crush::render::TableMotionFrame next)
@@ -161,6 +238,9 @@ struct TableMotionPresenter : TableMotionLayer {
         // Reproject the previous pose into the current actor's coordinate
         // system. Both artwork endpoints then use precisely the same motion
         // offset, so a moving ball does not acquire a second trailing image.
+        // Flippers are measured first, so both endpoints turn them alike.
+        measure_swings(next);
+        drawn_alpha = drawn_alpha >= 0.0F && drawn_alpha <= 1.0F ? drawn_alpha - 1.0F : 2.0F;
         devils_crush::render::TableMotionFrame prior;
         if (frame.background.image.valid()
             && frame.background.image.width == next.background.image.width
@@ -174,7 +254,8 @@ struct TableMotionPresenter : TableMotionLayer {
                 const auto old = std::ranges::find_if(frame.sprites, [&](const auto& item) {
                     return item.actor.slot == slot;
                 });
-                const bool linked = old != frame.sprites.end()
+                // A flipper's poses turn into one another instead of fading.
+                const bool linked = old != frame.sprites.end() && !sprite.swings && !sprite.swing
                     && devils_crush::render::table_art_linked(sprite.actor, &old->actor);
                 const auto& pieces = linked ? frame.sprites : next.sprites;
                 for (const auto& piece : pieces) {
@@ -196,17 +277,20 @@ struct TableMotionPresenter : TableMotionLayer {
         old_art.previous = previous;
         old_art.correction = correction;
         old_art.prior_correction = prior_correction;
+        old_art.prior_turn = prior_turn;
         return true;
     }
 
     bool draw(SDL_Renderer* renderer, int width, int height, float alpha, bool even = true)
     {
+        const float from = drawn_alpha;
+        drawn_alpha = alpha;
         const auto current = [&] {
-            return TableMotionLayer::draw(renderer, width, height, alpha, even);
+            return TableMotionLayer::draw(renderer, width, height, alpha, even, from);
         };
         if (!old_art.background.texture) return current();
         return blend.draw(renderer, width, height, alpha,
-            [&] { return old_art.draw(renderer, width, height, alpha, even); }, current);
+            [&] { return old_art.draw(renderer, width, height, alpha, even, from); }, current);
     }
 };
 

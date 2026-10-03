@@ -1810,6 +1810,8 @@ PersistentActorSpriteCache::update_and_composite(
             draw.x = sprite.world_x;
             draw.y = sprite.world_y - destination_world_y;
             draw.foreground = (sprite.flags & 0x0080U) != 0U;
+            draw.swings = sprite.actor_slot >= devils_crush::cabinet::kFirstFlipperControlSlot
+                && sprite.actor_slot <= devils_crush::cabinet::kLastFlipperControlSlot;
             draw.image = {sprite.width, sprite.height, {}};
             draw.image.pixels.reserve(sprite.palette_indices->size());
             for (const auto index : *sprite.palette_indices) {

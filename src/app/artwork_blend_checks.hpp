@@ -170,10 +170,16 @@
         int piece_frames = 0;
         int piece_endpoints = 0;
         int moving_pieces = 0;
+        int swung_frames = 0;
         // Long enough to launch the ball into each room and watch it play.
         const int ticks = route == 0 ? 240 : 600;
         for (int tick = 1; tick <= ticks && ok; ++tick) {
-            const auto frame = runtime.run_frame({});
+            // Both flippers go up for ten frames in every forty, so each room
+            // shows its flippers' poses changing.
+            InputFrame input{};
+            if (route != 0 && tick % 40 < 10)
+                input.player_one = static_cast<std::uint16_t>(Button::left) | static_cast<std::uint16_t>(Button::one);
+            const auto frame = runtime.run_frame(input);
             if (route != 0 && !service_synthetic_bonus_stage_return(runtime, returning)) {
                 ok = false;
                 break;
@@ -198,6 +204,8 @@
                 update_bonus_room_motion(renderer, runtime, state, view, rooms);
                 if (state->bonus_stage && state->screen_selector != 0U) ++room_frames;
                 if (rooms.ready) ++piece_frames;
+                if (rooms.ready && std::ranges::any_of(rooms.pieces.frame.sprites,
+                        [](const auto& sprite) { return sprite.swing.has_value(); })) ++swung_frames;
             }
             if (rooms.ready && tick % 3 == 0) {
                 const auto read_pieces = [&](float alpha, bool even) -> SDL_Surface* {
@@ -277,10 +285,11 @@
         if (route != 0) {
             std::cout << "Bonus " << static_cast<int>(route) << " pieces: " << piece_frames << " of "
                       << room_frames << " room frames; " << piece_endpoints << " exact endpoints; "
-                      << moving_pieces << " moved quarter-frame pictures.\n";
+                      << moving_pieces << " moved quarter-frame pictures; " << swung_frames
+                      << " flipper swing frames.\n";
             // A room that fell back on more than one frame in twenty is
             // mostly still blending pictures, which is what this replaced.
-            ok = ok && piece_endpoints > 0 && moving_pieces > 0
+            ok = ok && piece_endpoints > 0 && moving_pieces > 0 && swung_frames > 0
                 && piece_frames * 20 >= room_frames * 19;
         }
     }

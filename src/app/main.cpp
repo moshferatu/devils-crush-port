@@ -44,6 +44,7 @@
 #include <cctype>
 #include <charconv>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
@@ -55,6 +56,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <numbers>
 #include <optional>
 #include <set>
 #include <span>
@@ -23121,10 +23123,16 @@ enum class ViewProbeRoute {
     int moving = 0;
     int moving_ball_frames = 0;
     int interpolated_ball_frames = 0;
+    int swung_frames = 0;
     bool ok = check_playfield_rotation() && check_artwork_blending(renderer);
     for (int tick = 1; tick <= 2100 && ok; ++tick) {
         keep_fixed_actors_simulating(runtime);
-        static_cast<void>(runtime.run_frame(state_census_input_for_frame(tick)));
+        // Once the ball is in play, both flippers go up for twelve frames in
+        // every thirty, so all six swing.
+        auto input = state_census_input_for_frame(tick);
+        if (tick > 1300 && tick % 30 < 12)
+            input.player_one |= static_cast<std::uint16_t>(Button::left) | static_cast<std::uint16_t>(Button::one);
+        static_cast<void>(runtime.run_frame(input));
         const auto ram = runtime.export_work_ram();
         const auto state = devils_crush::cabinet::decode_cabinet_state(ram);
         const auto video = runtime.export_video_memory();
@@ -23137,6 +23145,8 @@ enum class ViewProbeRoute {
         const auto table = decode_cabinet_table(*rom, ram, *video, actors, palette,
             CabinetLayers::all, false, nullptr, nullptr, &motion);
         if (!table || !presenter.update(renderer, std::move(motion))) { ok = false; break; }
+        if (std::ranges::any_of(presenter.frame.sprites,
+                [](const auto& sprite) { return sprite.swing.has_value(); })) ++swung_frames;
         const auto ball = std::ranges::find_if(presenter.frame.sprites, [](const auto& sprite) {
             return sprite.actor.slot == devils_crush::cabinet::kBallActorSlot;
         });
@@ -23191,7 +23201,8 @@ enum class ViewProbeRoute {
               << moving << " distinct quarter-frame pictures; gameplay RAM unchanged.\n";
     std::cout << "Ball interpolation: " << interpolated_ball_frames << " of "
               << moving_ball_frames << " moving ball frames (cuts excluded).\n";
-    return ok && checked > 0 && moving > 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+    std::cout << "Flipper swings: " << swung_frames << " table frames.\n";
+    return ok && checked > 0 && moving > 0 && swung_frames > 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 // Reproduces what a cabinet shows when the picture is wrong, without

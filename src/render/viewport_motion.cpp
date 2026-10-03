@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <cstddef>
 #include <cstdlib>
 #include <tuple>
 
@@ -22,6 +24,9 @@ constexpr int kLinkDistance = 16;
 // A new pattern may change a moving sprite's step by this much, as the step
 // filter's own bound allows; further is a pose drawn somewhere else.
 constexpr int kPoseStepChange = 2;
+// A flipper's poses draw about as many pixels as each other; two shapes far
+// apart in size are not one thing turning.
+constexpr double kPoseSizeChange = 0.15;
 constexpr std::uint8_t kFirstSlot = 1U;
 constexpr std::uint8_t kSlotLimit =
     static_cast<std::uint8_t>(cabinet::kActorSlotCount);
@@ -57,6 +62,7 @@ void ViewportMotionTracker::reset() noexcept
 {
     shown_sat_.clear();
     previous_.clear();
+    previous_sprites_.clear();
 }
 
 std::optional<TableMotionFrame> ViewportMotionTracker::update(
@@ -230,6 +236,8 @@ std::optional<TableMotionFrame> ViewportMotionTracker::update(
     std::vector<bool> claimed(previous_.size());
     std::array<bool, cabinet::kActorSlotCount> used{};
     std::vector<bool> linked(pieces.size());
+    // The previous piece a pose-cut piece was linked to.
+    std::vector<std::ptrdiff_t> cut_from(pieces.size(), -1);
     for (const auto& [cost, now, then] : candidates) {
         if (linked[now] || claimed[then]) continue;
         linked[now] = true;
@@ -245,6 +253,7 @@ std::optional<TableMotionFrame> ViewportMotionTracker::update(
                 || std::abs(step_y - old.step_y) > kPoseStepChange)) {
             if (++generation_ == 0U) generation_ = 1U;
             piece.generation = generation_;
+            cut_from[now] = static_cast<std::ptrdiff_t>(then);
             continue;
         }
         piece.generation = old.generation;
@@ -264,6 +273,9 @@ std::optional<TableMotionFrame> ViewportMotionTracker::update(
         if (++generation_ == 0U) generation_ = 1U;
         pieces[now].generation = generation_;
     }
+    if (previous_sprites_.size() == previous_.size()) {
+        measure_swings(pieces, linked, claimed, cut_from, frame.sprites);
+    }
     for (std::size_t index = 0; index < pieces.size(); ++index) {
         auto& actor = frame.sprites[index].actor;
         actor.slot = pieces[index].slot;
@@ -272,7 +284,96 @@ std::optional<TableMotionFrame> ViewportMotionTracker::update(
         actor.world_y = static_cast<std::int16_t>(pieces[index].y);
     }
     previous_ = std::move(pieces);
+    previous_sprites_ = frame.sprites;
     return frame;
+}
+
+void ViewportMotionTracker::measure_swings(const std::vector<Piece>& pieces,
+    const std::vector<bool>& linked, const std::vector<bool>& claimed,
+    const std::vector<std::ptrdiff_t>& cut_from, std::vector<TableMotionSprite>& sprites) const
+{
+    // Drawn pixels that meet, diagonally included. Sprite boxes alone are
+    // not enough: two flippers' pieces can sit edge to edge.
+    const auto touches = [](const TableMotionSprite& a, const TableMotionSprite& b) {
+        if (a.x > b.x + b.image.width || b.x > a.x + a.image.width
+            || a.y > b.y + b.image.height || b.y > a.y + a.image.height) return false;
+        const auto drawn_at = [](const TableMotionSprite& sprite, int x, int y) {
+            x -= sprite.x;
+            y -= sprite.y;
+            return x >= 0 && y >= 0 && x < sprite.image.width && y < sprite.image.height
+                && sprite.image.pixels[static_cast<std::size_t>(y) * sprite.image.width + x] != 0U;
+        };
+        for (int row = 0; row < a.image.height; ++row) {
+            for (int column = 0; column < a.image.width; ++column) {
+                if (!drawn_at(a, a.x + column, a.y + row)) continue;
+                for (int dy = -1; dy <= 1; ++dy)
+                    for (int dx = -1; dx <= 1; ++dx)
+                        if (drawn_at(b, a.x + column + dx, a.y + row + dy)) return true;
+            }
+        }
+        return false;
+    };
+    // Gathers everything reachable from the seeds through touching pieces
+    // that may belong to the same flipper.
+    const auto grow = [&](const std::vector<TableMotionSprite>& from, std::vector<bool>& members,
+                          const auto& may_join) {
+        std::vector<std::size_t> pending;
+        for (std::size_t index = 0; index < members.size(); ++index)
+            if (members[index]) pending.push_back(index);
+        while (!pending.empty()) {
+            const auto member = pending.back();
+            pending.pop_back();
+            for (std::size_t other = 0; other < from.size(); ++other) {
+                if (members[other] || !may_join(other) || !touches(from[member], from[other])) continue;
+                members[other] = true;
+                pending.push_back(other);
+            }
+        }
+    };
+    const auto drawn = [](const std::vector<TableMotionSprite>& group) {
+        std::size_t count = 0;
+        for (const auto& sprite : group)
+            count += static_cast<std::size_t>(std::ranges::count_if(sprite.image.pixels,
+                [](std::uint32_t pixel) { return pixel != 0U; }));
+        return static_cast<double>(count);
+    };
+    // One actor for the whole flipper, so table_swing sees a single shape.
+    const auto as_flipper = [](TableMotionSprite sprite) {
+        sprite.actor = {.slot = 1U, .type = 1U};
+        sprite.swings = true;
+        sprite.swing.reset();
+        return sprite;
+    };
+
+    std::vector<bool> grouped(pieces.size());
+    for (std::size_t seed = 0; seed < pieces.size(); ++seed) {
+        if (cut_from[seed] < 0 || grouped[seed]) continue;
+        std::vector<bool> now(pieces.size());
+        now[seed] = true;
+        grow(sprites, now, [&](std::size_t index) {
+            return !grouped[index] && (cut_from[index] >= 0 || !linked[index]);
+        });
+        std::vector<bool> then(previous_.size());
+        for (std::size_t index = 0; index < pieces.size(); ++index) {
+            grouped[index] = grouped[index] || now[index];
+            if (now[index] && cut_from[index] >= 0) then[static_cast<std::size_t>(cut_from[index])] = true;
+        }
+        grow(previous_sprites_, then, [&](std::size_t index) { return !claimed[index]; });
+
+        std::vector<TableMotionSprite> before;
+        std::vector<TableMotionSprite> after;
+        for (std::size_t index = 0; index < previous_.size(); ++index)
+            if (then[index]) before.push_back(as_flipper(previous_sprites_[index]));
+        for (std::size_t index = 0; index < pieces.size(); ++index)
+            if (now[index]) after.push_back(as_flipper(sprites[index]));
+        const double size_before = drawn(before);
+        const double size_after = drawn(after);
+        if (std::abs(size_before - size_after) > kPoseSizeChange * std::max(size_before, size_after)) continue;
+        const auto turn = table_swing(before, after, 1U);
+        if (!turn) continue;
+        for (std::size_t index = 0; index < pieces.size(); ++index)
+            if (now[index]) sprites[index].swing = turn;
+    }
 }
 
 } // namespace devils_crush::render
