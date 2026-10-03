@@ -1012,7 +1012,8 @@ bool launch()
     STARTUPINFOW si{};
     si.cb = sizeof si;
     PROCESS_INFORMATION pi{};
-    if (!CreateProcessW(exe.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, ui.base.c_str(), &si, &pi)) {
+    // The game is a console program; started from here it gets no terminal.
+    if (!CreateProcessW(exe.c_str(), cmd.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, ui.base.c_str(), &si, &pi)) {
         say("Could not start %s (error %lu)", utf8_of(exe).c_str(), static_cast<unsigned long>(GetLastError()));
         return false;
     }
