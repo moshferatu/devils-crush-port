@@ -8206,6 +8206,20 @@ void test_cabinet_state()
             && normal_table->current_ball == 1U,
         "normal session decodes the table and all three DMD values");
 
+    // The score bytes the password THECRUSHEL restores.
+    work_ram[0x0206U] = std::byte{0xD4};
+    work_ram[0x020DU] = std::byte{0x7E};
+    work_ram[0x0214U] = std::byte{0xB7};
+    const auto over_limit = decode_cabinet_state(work_ram);
+    check(
+        over_limit
+            && over_limit->stored_score == 0xB77ED4U
+            && over_limit->displayed_score == 999'999'900U,
+        "a restored score above the limit is shown as the limit");
+    work_ram[0x0206U] = std::byte{0xFC};
+    work_ram[0x020DU] = std::byte{0x03};
+    work_ram[0x0214U] = std::byte{0};
+
     work_ram[0x0D52U] = std::byte{2};
     check(
         decode_cabinet_state(work_ram)

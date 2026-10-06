@@ -26,6 +26,11 @@ constexpr std::size_t kBonusPointsHundredsOffset = 0x0D50U;
 constexpr std::size_t kScoreLowBase = 0x0205U;
 constexpr std::size_t kScoreMiddleBase = 0x020CU;
 constexpr std::size_t kScoreHighBase = 0x0213U;
+// The most a score can be: 999,999,900. `00:F5A9` holds every award to it,
+// but only when points are added, so a password can put more than this in
+// the score bytes -- `THECRUSHEL` decodes to 1,202,555,600 -- and it stays
+// there until the first award.
+constexpr std::uint32_t kStoredScoreLimit = 0x98967FU;
 constexpr std::uint8_t kBonusStageSessionBit = 0x10U;
 constexpr std::uint8_t kActorCameraCullFlag = 0x02U;
 constexpr std::uint8_t kActorCameraActiveFlag = 0x80U;
@@ -102,7 +107,9 @@ std::optional<CabinetState> decode_cabinet_state(
             : PlayfieldView::emulated_framebuffer,
         .stored_score = stored_score,
         .displayed_score =
-            static_cast<std::uint64_t>(stored_score) * 100U,
+            static_cast<std::uint64_t>(
+                std::min(stored_score, kStoredScoreLimit))
+            * 100U,
         .bonus_points = bonus_points,
         .score_slot = score_slot,
         .balls_in_session = balls_in_session,
