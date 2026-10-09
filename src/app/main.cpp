@@ -21434,6 +21434,13 @@ int run_windows_host(
                     && devils_crush::input::nudge_play_active(runtime.export_work_ram()))) {
                 input.player_one |= static_cast<std::uint16_t>(Button::two);
             }
+            // The cartridge reads the pad of whoever's turn it is: every
+            // reader indexes `$2013,Y` and `$2018,Y` with the active player in
+            // `$2251`. A cabinet has one set of buttons and the players take
+            // turns at it, so it answers as both pads.
+            if (!presentation_check) {
+                input.player_two = input.player_one;
+            }
             if (capture_session) {
                 captured_inputs.push_back({
                     .input = input,
