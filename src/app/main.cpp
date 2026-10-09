@@ -20676,6 +20676,32 @@ int run_windows_host(
         std::cerr << "Could not observe high-score name entry; disabling DMD.\n";
         destroy_auxiliary_window(dmd);
     }
+    // `09:6ED6` is the two-player "PLAYER n / READY" screen, and `09:6F2D` its
+    // return. Between turns `00:F7C8` fades the table out, clears the
+    // background and calls it with `$54` still selecting the table and the
+    // table's attributes still in RAM, so nothing in work RAM says the table
+    // is not what is on screen. The count is the fallback for a return that is
+    // never seen: the screen waits `$50` frames at most.
+    constexpr unsigned kReadyScreenFrames = 180U;
+    unsigned ready_screen_frames = 0U;
+    if (cabinet_mode
+        && !(runtime.install_execution_hook({
+                 .routine = {.physical_bank = 0x09U, .logical_pc = 0x6ED6U},
+                 .mode = HookMode::observe,
+                 .callback = [&ready_screen_frames](const RoutineEntry&) {
+                     ready_screen_frames = kReadyScreenFrames;
+                 },
+             })
+            && runtime.install_execution_hook({
+                .routine = {.physical_bank = 0x09U, .logical_pc = 0x6F2DU},
+                .mode = HookMode::observe,
+                .callback = [&ready_screen_frames](const RoutineEntry&) {
+                    ready_screen_frames = 0U;
+                },
+            }))) {
+        std::cerr << "Could not observe the player ready screen; "
+                     "it will not be shown between turns.\n";
+    }
     std::uint64_t backglass_logo_frame = 0U;
     bool assignment_active = false;
     auto assignment_role = AssignmentRole::playfield;
@@ -21488,11 +21514,19 @@ int run_windows_host(
                 host_ok = false;
             } else {
                 const auto work_ram = runtime.export_work_ram();
-                const auto cabinet_state =
+                auto cabinet_state =
                     devils_crush::cabinet::decode_cabinet_state(
                         work_ram);
                 if (cabinet_state) {
                     dmd_panel.observe(work_ram);
+                }
+                if (ready_screen_frames != 0U) {
+                    --ready_screen_frames;
+                    if (cabinet_state) {
+                        cabinet_state->playfield =
+                            devils_crush::cabinet::PlayfieldView::
+                                emulated_framebuffer;
+                    }
                 }
                 if (backglass_logo
                     && backglass.renderer != nullptr) {
