@@ -16,6 +16,7 @@
 #include "devils_crush/emulation/pce_runtime.hpp"
 #include "devils_crush/emulation/playfield_collision_adapter.hpp"
 #include "devils_crush/emulation/routine_replay_corpus.hpp"
+#include "devils_crush/input/ball_drag.hpp"
 #include "devils_crush/input/plunger.hpp"
 #include "devils_crush/native_runtime/actor_collision_scan.hpp"
 #include "devils_crush/native_runtime/actor_scheduler.hpp"
@@ -302,6 +303,9 @@ struct CommandLine {
     // the same session and request the cartridge's authentic bonus transition
     // before handing control to the interactive host.
     std::uint8_t bonus_stage = 0U;
+    // A cheat for testing the table: the left mouse button carries the ball
+    // over the playfield.
+    bool drag_ball = false;
     // Records an interactive, power-on play session as exact per-frame pad
     // masks plus the runtime coverage artifacts needed to rank new code.
     std::filesystem::path capture_session_directory;
@@ -563,6 +567,7 @@ struct CommandLine {
     bool cabinet_launch_flipper_probe = false;
     bool cabinet_plunger_probe = false;
     bool cabinet_plunger_check = false;
+    bool cabinet_ball_drag_check = false;
     bool verify_unsigned_square_root = false;
     bool verify_unsigned_word_multiply_partial = false;
     bool verify_signed_word_normalizer = false;
@@ -4595,6 +4600,8 @@ parse_logical_address_range(const std::string_view text)
             }
             options.bonus_stage = static_cast<std::uint8_t>(stage);
             bonus_stage_override = true;
+        } else if (argument == "--drag-ball") {
+            options.drag_ball = true;
         } else if (argument == "--capture-session") {
             if (index + 1 >= argc) {
                 options.error = "--capture-session requires a directory.";
@@ -5226,6 +5233,8 @@ parse_logical_address_range(const std::string_view text)
             options.cabinet_plunger_probe = true;
         } else if (argument == "--cabinet-plunger-check") {
             options.cabinet_plunger_check = true;
+        } else if (argument == "--cabinet-ball-drag-check") {
+            options.cabinet_ball_drag_check = true;
         } else if (argument == "--verify-unsigned-square-root") {
             options.verify_unsigned_square_root = true;
         } else if (argument == "--verify-unsigned-word-multiply-partial") {
@@ -5456,6 +5465,9 @@ parse_logical_address_range(const std::string_view text)
         if (!nudge_multiplier_override) {
             options.nudge_multiplier = play.nudge_multiplier;
         }
+        // The mouse's hold on the ball is not in a capture's inputs.
+        options.drag_ball = options.drag_ball
+            || (play.drag_ball && options.capture_session_directory.empty());
     }
     options.cabinet = cabinet_override.value_or(play_selected && play.cabinet);
     options.music_voice_overlay = music_overlay_override.value_or(
@@ -5468,6 +5480,7 @@ parse_logical_address_range(const std::string_view text)
         (host_selected || options.cabinet_drain_probe
          || options.cabinet_nudge_probe || options.cabinet_launch_check
          || options.cabinet_plunger_check
+         || options.cabinet_ball_drag_check
          || options.cabinet_launch_flipper_probe)
         && !options.emulate_only;
     const int recording_frame_count = options.record_state_census
@@ -5551,6 +5564,12 @@ parse_logical_address_range(const std::string_view text)
                && !host_selected) {
         options.error =
             "--capture-session requires the interactive host.";
+    } else if (options.drag_ball
+               && (!play_selected
+                   || !options.capture_session_directory.empty())) {
+        options.error =
+            "--drag-ball is available only for the interactive host, and "
+            "not with --capture-session.";
     } else if (options.bonus_stage != 0U && !host_selected) {
         options.error =
             "--bonus-stage is available only for the interactive host or "
@@ -9744,6 +9763,7 @@ void print_usage()
         << "  devils-crush --cabinet-presentation-check [--rom <path>]\n"
         << "  devils-crush --cabinet-plunger-probe\n"
         << "  devils-crush --cabinet-plunger-check [--rom <path>]\n"
+        << "  devils-crush --cabinet-ball-drag-check [--rom <path>]\n"
         << "  devils-crush --help\n\n"
         << "Plunger:\n"
         << "  An analog plunger is read as one axis of an ordinary game\n"
@@ -9768,12 +9788,16 @@ void print_usage()
            "  Scale the original nudge impulse (0-16, default 1; e.g. 2.5).\n"
            "  Applies to keyboard, gamepad and PinOne nudges.\n\n"
         << "Settings (devils-crush.ini, which the launcher edits):\n"
-           "  game.rom, game.cabinet, game.bonus_stage,\n"
+           "  game.rom, game.cabinet, game.bonus_stage, game.drag_ball,\n"
            "  audio.music_voice_overlay, video.smoothing and\n"
            "  input.nudge_multiplier set normal play's defaults for --rom,\n"
-           "  --no-cabinet, --bonus-stage, --no-music-voice-overlay, F6\n"
-           "  and --nudge-multiplier. A flag\n"
+           "  --no-cabinet, --bonus-stage, --drag-ball,\n"
+           "  --no-music-voice-overlay, F6 and --nudge-multiplier. A flag\n"
            "  beats the file for that run.\n\n"
+        << "Drag ball: --drag-ball\n"
+           "  A cheat for testing the table. The mouse pointer shows over\n"
+           "  the game, and holding the left button on the playfield\n"
+           "  carries the ball there; let go while moving to throw it.\n\n"
         << "Saved data (in the folder the game is started from):\n"
         << "  devils-crush.sav      The cartridge's backup RAM, holding the\n"
            "                        five numbered save slots the game writes\n"
@@ -10294,6 +10318,48 @@ struct StageTexture {
     int height = 0;
 };
 
+// Where `present_frame` last put the source picture in its window, in render
+// output pixels, and how far it was turned.
+struct PresentedPicture {
+    SDL_FRect destination{};
+    int rotation_degrees = 0;
+    int source_width = 0;
+    int source_height = 0;
+};
+
+// The source pixel a place in the window is over; it may lie outside.
+[[nodiscard]] std::optional<SDL_FPoint> picture_point(
+    SDL_Renderer* renderer,
+    const PresentedPicture& picture,
+    const float window_x,
+    const float window_y)
+{
+    float x = 0.0F;
+    float y = 0.0F;
+    if (picture.source_width <= 0 || picture.source_height <= 0
+        || picture.destination.w <= 0.0F || picture.destination.h <= 0.0F
+        || !SDL_RenderCoordinatesFromWindow(
+            renderer, window_x, window_y, &x, &y)) {
+        return std::nullopt;
+    }
+    // `SDL_RenderTextureRotated` turned it clockwise about its center.
+    const float dx =
+        x - (picture.destination.x + picture.destination.w / 2.0F);
+    const float dy =
+        y - (picture.destination.y + picture.destination.h / 2.0F);
+    const int rotation = picture.rotation_degrees;
+    const float across = rotation == 90 ? dy
+        : rotation == 180 ? -dx : rotation == 270 ? -dy : dx;
+    const float down = rotation == 90 ? -dx
+        : rotation == 180 ? -dy : rotation == 270 ? dx : dy;
+    return SDL_FPoint{
+        (across / picture.destination.w + 0.5F)
+            * static_cast<float>(picture.source_width),
+        (down / picture.destination.h + 0.5F)
+            * static_cast<float>(picture.source_height),
+    };
+}
+
 void destroy_stage(StageTexture& stage)
 {
     if (stage.texture != nullptr) {
@@ -10344,7 +10410,8 @@ void destroy_stage(StageTexture& stage)
     TableMotionPresenter* motion = nullptr,
     const float motion_alpha = 1.0F,
     const FrameArtworkPresenter* artwork = nullptr,
-    const int rotation_degrees = 0)
+    const int rotation_degrees = 0,
+    PresentedPicture* const presented = nullptr)
 {
     int output_width = 0;
     int output_height = 0;
@@ -10465,6 +10532,14 @@ void destroy_stage(StageTexture& stage)
         : rotation_degrees == 180 ? -dy : rotation_degrees == 270 ? -dx : dy;
     destination.x = physical_width / 2.0F + rotated_x - destination.w / 2;
     destination.y = physical_height / 2.0F + rotated_y - destination.h / 2;
+    if (presented != nullptr) {
+        *presented = {
+            .destination = destination,
+            .rotation_degrees = rotation_degrees,
+            .source_width = source.width,
+            .source_height = source.height,
+        };
+    }
     if (!SDL_RenderTextureRotated(renderer, stage.texture, nullptr, &destination,
             rotation_degrees, nullptr, SDL_FLIP_NONE)) {
         return report_sdl_error("SDL_RenderTexture (sharp resolve) failed");
@@ -19930,6 +20005,97 @@ void keep_fixed_actors_simulating(
     return ball_in_launcher;
 }
 
+// The ball's sprite sits six pixels up and to the left of its actor position,
+// less the `$20` the hardware takes off a sprite's X: bank `$08`'s descriptor
+// for it, which is read rather than assumed wherever the ROM gives one.
+constexpr int kBallSpriteOffsetX = -38;
+constexpr int kBallSpriteOffsetY = -6;
+constexpr int kBallSpriteHalf = 8;
+// The stitched table's row zero is the playfield's first: table-world row
+// `kTableWorldTop`, under the thirty lines of score band a screen carries
+// above its playfield.
+constexpr int kStitchedTableSpriteTop =
+    devils_crush::cabinet::kTableWorldTop + 30;
+
+// The ball's actor position that puts the middle of its sprite on a pixel of
+// the playfield's picture: the stitched table's, or the cartridge's own
+// screen, whose sprites `08:40DF` draws at their Y less the camera anchor in
+// `$A9:$AA`.
+[[nodiscard]] std::optional<SDL_FPoint> ball_position_at_picture_point(
+    const std::span<const std::byte> rom,
+    const std::span<const std::byte> work_ram,
+    const SDL_FPoint point,
+    const bool stitched_table)
+{
+    if (work_ram.size() < 0x2000U) {
+        return std::nullopt;
+    }
+    const auto byte_at = [&work_ram](const std::size_t offset) {
+        return std::to_integer<int>(work_ram[offset]);
+    };
+    int offset_x = kBallSpriteOffsetX;
+    int offset_y = kBallSpriteOffsetY;
+    if (const auto sprites =
+            devils_crush::render::decode_ball_and_flipper_sprites(
+                rom, work_ram)) {
+        for (const auto& sprite : *sprites) {
+            if (sprite.actor_slot == devils_crush::cabinet::kBallActorSlot) {
+                offset_x = sprite.world_x
+                    - static_cast<std::int16_t>(
+                        byte_at(0x1180U) | (byte_at(0x1200U) << 8));
+                offset_y = sprite.world_y
+                    - static_cast<std::int16_t>(
+                        byte_at(0x1300U) | (byte_at(0x1380U) << 8));
+                break;
+            }
+        }
+    }
+    const int top = stitched_table
+        ? kStitchedTableSpriteTop
+        : static_cast<std::int16_t>(byte_at(0xA9U) | (byte_at(0xAAU) << 8));
+    return SDL_FPoint{
+        point.x - static_cast<float>(kBallSpriteHalf + offset_x),
+        point.y - static_cast<float>(kBallSpriteHalf + offset_y - top),
+    };
+}
+
+// Gives a ball the cheat was carrying back to the game.
+void release_dragged_ball(devils_crush::emulation::PceRuntime& runtime)
+{
+    auto work_ram = runtime.export_work_ram();
+    if (devils_crush::input::release_dragged_ball(work_ram)) {
+        static_cast<void>(runtime.import_work_ram(work_ram));
+    }
+}
+
+// The ball-dragging cheat's frame: the ball is taken to the pointer, held
+// inside the picture. Nothing is written, and false returned, unless there is
+// a ball in play.
+bool drag_ball_to_picture_point(
+    devils_crush::emulation::PceRuntime& runtime,
+    const std::span<const std::byte> rom,
+    SDL_FPoint point,
+    const bool stitched_table)
+{
+    auto work_ram = runtime.export_work_ram();
+    if (!devils_crush::input::ball_can_be_dragged(work_ram)) {
+        return false;
+    }
+    const float half = static_cast<float>(kBallSpriteHalf);
+    const float width =
+        static_cast<float>(devils_crush::cabinet::kTableWorldWidth);
+    const float height = stitched_table
+        ? static_cast<float>(devils_crush::cabinet::kTableWorldHeight)
+        : 240.0F;
+    point.x = std::clamp(point.x, half, width - half);
+    point.y = std::clamp(point.y, half, height - half);
+    const auto position =
+        ball_position_at_picture_point(rom, work_ram, point, stitched_table);
+    return position
+        && devils_crush::input::drag_ball(work_ram, position->x, position->y)
+        && runtime.import_work_ram(work_ram);
+}
+
 // `02:52CA SBC #$09`, the ball's offset above the shooter it is sitting on,
 // and how far it may be from there before it is taken to be something other
 // than a ball sitting in the shooter.
@@ -20443,7 +20609,8 @@ int run_windows_host(
     const std::filesystem::path& capture_session_directory = {},
     const bool native_gameplay_bootstrap_shadow = false,
     const double nudge_multiplier = 1.0,
-    const bool presentation_check = false)
+    const bool presentation_check = false,
+    const bool drag_ball = false)
 {
     // Joystick as well as gamepad: the plunger is an anonymous HID axis that
     // SDL's gamepad database has no mapping for, so it is only visible through
@@ -20453,10 +20620,11 @@ int run_windows_host(
         report_sdl_error("SDL_Init failed");
         return EXIT_FAILURE;
     }
-    // Nothing here reads the mouse, and a pointer parked on the playfield is
-    // just something to look at. This is application-wide, so it covers the
-    // DMD and backglass windows too, and `SDL_Quit` puts it back.
-    if (!SDL_HideCursor()) {
+    // Nothing but the ball-dragging cheat reads the mouse, and a pointer
+    // parked on the playfield is just something to look at. This is
+    // application-wide, so it covers the DMD and backglass windows too, and
+    // `SDL_Quit` puts it back.
+    if (!drag_ball && !SDL_HideCursor()) {
         std::cerr << "Could not hide the mouse cursor: " << SDL_GetError()
                   << '\n';
     }
@@ -20702,6 +20870,11 @@ int run_windows_host(
         std::cerr << "Could not observe the player ready screen; "
                      "it will not be shown between turns.\n";
     }
+    // The ball-dragging cheat's ROM, for the ball's sprite, and where the
+    // playfield's picture last went.
+    const auto drag_rom =
+        drag_ball ? read_rom_bytes(rom_path) : std::nullopt;
+    PresentedPicture playfield_picture;
     std::uint64_t backglass_logo_frame = 0U;
     bool assignment_active = false;
     auto assignment_role = AssignmentRole::playfield;
@@ -21315,6 +21488,10 @@ int run_windows_host(
             } else if (
                 event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat
                 && event.key.key == SDLK_F5) {
+                // A state is not saved with the ball in the cheat's hand.
+                if (drag_rom) {
+                    release_dragged_ball(runtime);
+                }
                 (void)save_quick_state(runtime, kQuickStatePath);
             } else if (
                 event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat
@@ -21466,6 +21643,21 @@ int run_windows_host(
             // turns at it, so it answers as both pads.
             if (!presentation_check) {
                 input.player_two = input.player_one;
+            }
+            if (drag_rom) {
+                float mouse_x = 0.0F;
+                float mouse_y = 0.0F;
+                const auto point = SDL_GetMouseFocus() == window
+                    && (SDL_GetMouseState(&mouse_x, &mouse_y)
+                        & SDL_BUTTON_LMASK) != 0U
+                    ? picture_point(
+                        renderer, playfield_picture, mouse_x, mouse_y)
+                    : std::nullopt;
+                if (!point
+                    || !drag_ball_to_picture_point(
+                        runtime, *drag_rom, *point, table_view)) {
+                    release_dragged_ball(runtime);
+                }
             }
             if (capture_session) {
                 captured_inputs.push_back({
@@ -21707,7 +21899,8 @@ int run_windows_host(
                         : room_pieces ? &viewport_motion.pieces : nullptr,
                     motion_alpha,
                     blend_frame ? &frame_artwork : nullptr,
-                    cabinet_config.playfield_rotation_degrees);
+                    cabinet_config.playfield_rotation_degrees,
+                    &playfield_picture);
                 if (host_ok && (table_view || room_pieces || blend_frame)) {
                     presentation_sample.observe(emulated_frames,
                         (interpolate || room_pieces || blend_frame) && motion_alpha < 1.0F,
@@ -23936,6 +24129,320 @@ struct PlungerCheckPass {
     return EXIT_SUCCESS;
 }
 
+// The middle of the ball's sprite as the stitched table draws it, and as the
+// hardware's sprite table has it on the screen.
+struct DraggedBallSeen {
+    SDL_FPoint stitched{};
+    std::optional<SDL_FPoint> screen;
+    int velocity_x = 0;
+    int velocity_y = 0;
+    int camera = 0;
+    // `$3080` bit 7: inside the camera's rows, so drawn and run.
+    bool on_camera = false;
+};
+
+[[nodiscard]] std::optional<DraggedBallSeen> see_dragged_ball(
+    devils_crush::emulation::PceRuntime& runtime,
+    const std::span<const std::byte> rom)
+{
+    const auto ram = runtime.export_work_ram();
+    const auto video = runtime.export_video_memory();
+    const auto sprites =
+        devils_crush::render::decode_ball_and_flipper_sprites(rom, ram);
+    if (ram.size() < 0x2000U || !video || !sprites) {
+        return std::nullopt;
+    }
+    const auto word = [&ram](const std::size_t low, const std::size_t high) {
+        return static_cast<int>(static_cast<std::int16_t>(
+            std::to_integer<unsigned>(ram[low])
+            | (std::to_integer<unsigned>(ram[high]) << 8U)));
+    };
+    for (const auto& sprite : *sprites) {
+        if (sprite.actor_slot != devils_crush::cabinet::kBallActorSlot) {
+            continue;
+        }
+        DraggedBallSeen seen;
+        seen.stitched.x = static_cast<float>(sprite.world_x + kBallSpriteHalf);
+        seen.stitched.y = static_cast<float>(
+            sprite.world_y + kBallSpriteHalf - kStitchedTableSpriteTop);
+        seen.velocity_x = word(0x1400U, 0x1480U);
+        seen.velocity_y = word(0x1500U, 0x1580U);
+        seen.camera = word(0xA9U, 0xAAU);
+        seen.on_camera =
+            (std::to_integer<unsigned>(ram[0x1080U]) & 0x80U) != 0U;
+        for (std::size_t at = 0; at + 3U < video->sat_words.size(); at += 4U) {
+            if (video->sat_words[at + 2U] != sprite.pattern) {
+                continue;
+            }
+            SDL_FPoint screen;
+            screen.x = static_cast<float>(
+                static_cast<int>(video->sat_words[at + 1U] & 0x3FFU)
+                - 0x20 + kBallSpriteHalf);
+            screen.y = static_cast<float>(
+                static_cast<int>(video->sat_words[at] & 0x3FFU)
+                - 0x40 + kBallSpriteHalf);
+            seen.screen = screen;
+            break;
+        }
+        return seen;
+    }
+    return std::nullopt;
+}
+
+// Frames of the last `frames` the ball's sprite was within a pixel of the
+// point it was held at, by the picture the point is in, after `settle` frames
+// for the camera to bring it there. Minus one if the ball was ever off camera.
+[[nodiscard]] int hold_dragged_ball(
+    devils_crush::emulation::PceRuntime& runtime,
+    const std::span<const std::byte> rom,
+    const SDL_FPoint point,
+    const bool stitched,
+    const int frames,
+    const bool bonus,
+    const int settle = 0)
+{
+    int held = 0;
+    bool culled = false;
+    bool return_pending = false;
+    for (int frame = -settle; frame < frames; ++frame) {
+        if (!drag_ball_to_picture_point(runtime, rom, point, stitched)) {
+            release_dragged_ball(runtime);
+        }
+        static_cast<void>(runtime.run_frame(InputFrame{}));
+        if (bonus) {
+            static_cast<void>(service_synthetic_bonus_stage_return(
+                runtime, return_pending));
+        }
+        const auto seen = see_dragged_ball(runtime, rom);
+        culled = culled || (seen && !bonus && !seen->on_camera);
+        if (frame < 0 || !seen || (!stitched && !seen->screen)) {
+            continue;
+        }
+        const SDL_FPoint at = stitched ? seen->stitched : *seen->screen;
+        if (std::abs(at.x - point.x) <= 1.0F
+            && std::abs(at.y - point.y) <= 1.0F) {
+            ++held;
+        }
+    }
+    return culled ? -1 : held;
+}
+
+// The ball-dragging cheat, on the census route's first ball and in a bonus
+// stage: that the pointer's pixel is where the ball's sprite ends up, in the
+// stitched table's picture and on the cartridge's own screen, that a moving
+// hold throws, and that nothing is carried out of the Devil Shooter.
+[[nodiscard]] int run_ball_drag_check(
+    devils_crush::emulation::PceRuntime& runtime,
+    const std::vector<std::byte>& rom,
+    const CommandLine* const native_registry)
+{
+    // The configuration people play: the held ball's `RTS` has to get through
+    // the native scheduler as it does the cartridge's. The hooks capture the
+    // deployment, so they go before it does.
+    NativeRegistryDeployment registry_deployment;
+    if (native_registry != nullptr
+        && !install_native_registry(
+            runtime, *native_registry, rom, {}, registry_deployment)) {
+        std::cerr << "Could not deploy the native registry.\n";
+        return EXIT_FAILURE;
+    }
+    struct HookRelease {
+        devils_crush::emulation::PceRuntime& runtime;
+        ~HookRelease() { runtime.clear_execution_hooks(); }
+    } hook_release{runtime};
+    std::cout << "Native registry: "
+              << (native_registry != nullptr ? "deployed" : "off") << ".\n";
+
+    const auto see = [&runtime, &rom]() {
+        return see_dragged_ball(runtime, rom);
+    };
+    const auto hold = [&runtime, &rom](const SDL_FPoint point,
+                          const bool stitched, const int frames,
+                          const bool bonus, const int settle = 0) {
+        return hold_dragged_ball(
+            runtime, rom, point, stitched, frames, bonus, settle);
+    };
+
+    runtime.reset();
+    bool ok = true;
+    for (int frame_number = 1; frame_number <= 1400; ++frame_number) {
+        InputFrame input;
+        if (frame_number < 1000) {
+            input = state_census_input_for_frame(frame_number);
+        }
+        if (frame_number == 1000) {
+            // Still being served, in none of the ball's own routines:
+            // nothing may be written.
+            auto ram = runtime.export_work_ram();
+            const auto before = ram;
+            if (devils_crush::input::drag_ball(ram, 128.0, 300.0)
+                || ram != before) {
+                std::cerr << "A ball still being served was carried.\n";
+                ok = false;
+            }
+        }
+        static_cast<void>(runtime.run_frame(input));
+    }
+    // The ball is never launched: it is taken from the Devil Shooter, where
+    // it sits with the shooter's bit up.
+    {
+        const auto ram = runtime.export_work_ram();
+        if (ram.size() < 0x2000U
+            || (std::to_integer<unsigned>(ram[0x53U]) & 0x08U) == 0U
+            || !devils_crush::input::ball_can_be_dragged(ram)) {
+            std::cerr << "The census route's ball was not waiting in the "
+                         "Devil Shooter.\n";
+            return EXIT_FAILURE;
+        }
+        std::cout << "Ball taken from the Devil Shooter.\n";
+    }
+
+    constexpr int kHoldFrames = 40;
+    constexpr std::array<SDL_FPoint, 5> kTablePoints{{
+        {128.0F, 330.0F}, {70.0F, 150.0F}, {180.0F, 60.0F},
+        {128.0F, 520.0F}, {60.0F, 420.0F},
+    }};
+    int table_points_held = 0;
+    // The camera comes at eight rows a frame, and the table is 668 long.
+    constexpr int kSettleFrames = 100;
+    std::cout << "Held on the stitched table, frames of " << kHoldFrames
+              << " within a pixel once the camera has come:\n";
+    for (const auto point : kTablePoints) {
+        const int held = hold(point, true, kHoldFrames, false, kSettleFrames);
+        const auto seen = see();
+        std::cout << "  (" << point.x << ',' << point.y << ")  " << held;
+        if (seen) {
+            std::cout << "  ends at (" << seen->stitched.x << ','
+                      << seen->stitched.y << "), camera " << seen->camera;
+        }
+        std::cout << '\n';
+        if (held == kHoldFrames) {
+            ++table_points_held;
+        }
+    }
+    // Carried out of the lane without touching its gate, the ball is
+    // launched all the same: the shooter's bit is down and the gate shut.
+    {
+        const auto ram = runtime.export_work_ram();
+        if ((std::to_integer<unsigned>(ram[0x53U]) & 0x08U) != 0U
+            || std::to_integer<unsigned>(
+                   ram[devils_crush::input::kDragLaneGateType]) != 0x82U) {
+            std::cerr << "The ball carried out of the Devil Shooter's lane "
+                         "was not taken as launched.\n";
+            ok = false;
+        }
+    }
+    if (table_points_held != static_cast<int>(kTablePoints.size())) {
+        std::cerr << "The ball did not stay where the stitched table's "
+                     "pointer held it.\n";
+        ok = false;
+    }
+
+    // The same on the cartridge's own screen, as the one window shows it,
+    // where the camera moves under the pointer.
+    {
+        const SDL_FPoint point{128.0F, 120.0F};
+        const int held = hold(point, false, kHoldFrames, false);
+        std::cout << "Held on the table's own screen: " << held << " of "
+                  << kHoldFrames << ".\n";
+        if (held != kHoldFrames) {
+            std::cerr << "The ball did not stay where the screen's pointer "
+                         "held it.\n";
+            ok = false;
+        }
+    }
+
+    // And at the screen's top edge the camera is brought up the table.
+    {
+        const int from = see() ? see()->camera : 0;
+        const int held = hold({128.0F, 12.0F}, false, kHoldFrames, false);
+        const auto seen = see();
+        std::cout << "Held at the screen's top edge: camera " << from
+                  << " to " << (seen ? seen->camera : 0) << ".\n";
+        if (held < 0 || !seen || seen->camera > from - 4 * kHoldFrames) {
+            std::cerr << "Holding the ball at the screen's edge did not "
+                         "bring the camera.\n";
+            ok = false;
+        }
+    }
+
+    // A hold moving four pixels a frame leaves the ball going that way.
+    {
+        static_cast<void>(hold({100.0F, 520.0F}, true, 10, false, 100));
+        for (int step = 1; step <= 8; ++step) {
+            static_cast<void>(hold(
+                {100.0F + 4.0F * static_cast<float>(step), 520.0F},
+                true, 1, false));
+        }
+        const auto held_at = see();
+        release_dragged_ball(runtime);
+        static_cast<void>(runtime.run_frame(InputFrame{}));
+        const auto let_go = see();
+        static_cast<void>(runtime.run_frame(InputFrame{}));
+        const auto seen = see();
+        const float stayed = let_go && held_at
+            ? let_go->stitched.x - held_at->stitched.x : -1.0F;
+        const float thrown =
+            seen && let_go ? seen->stitched.x - let_go->stitched.x : 0.0F;
+        std::cout << "Let go moving four pixels a frame: " << stayed
+                  << " pixels on in the first frame, " << thrown
+                  << " in the second.\n";
+        // Let go outside the lane, the shooter's routine has handed the ball
+        // on to the one for a ball in play.
+        if (devils_crush::input::dragged_ball_handler(
+                runtime.export_work_ram())
+            != devils_crush::input::kDragBallInPlayHandler) {
+            std::cerr << "The ball let go on the table was not in play.\n";
+            ok = false;
+        }
+        if (stayed != 0.0F || thrown < 3.0F) {
+            std::cerr << "A moving hold did not throw the ball.\n";
+            ok = false;
+        }
+    }
+
+    runtime.reset();
+    if (!prepare_bonus_stage_launch(runtime, 1U)) {
+        return EXIT_FAILURE;
+    }
+    bool return_pending = true;
+    bool room = false;
+    for (int frame = 0; frame < 900 && !room; ++frame) {
+        static_cast<void>(runtime.run_frame(InputFrame{}));
+        static_cast<void>(service_synthetic_bonus_stage_return(
+            runtime, return_pending));
+        const auto ram = runtime.export_work_ram();
+        const auto state = devils_crush::cabinet::decode_cabinet_state(ram);
+        room = state && state->bonus_stage && state->screen_selector != 0U
+            && devils_crush::input::ball_can_be_dragged(ram);
+    }
+    if (!room) {
+        std::cerr << "The bonus stage never put a ball in play.\n";
+        return EXIT_FAILURE;
+    }
+    {
+        const SDL_FPoint point{128.0F, 120.0F};
+        const int held = hold(point, false, kHoldFrames, true);
+        const auto seen = see();
+        std::cout << "Held in bonus stage 1: " << held << " of "
+                  << kHoldFrames;
+        if (seen && seen->screen) {
+            std::cout << ", ends at (" << seen->screen->x << ','
+                      << seen->screen->y << ')';
+        }
+        std::cout << ".\n";
+        if (held != kHoldFrames) {
+            std::cerr << "The ball did not stay where the bonus stage's "
+                         "pointer held it.\n";
+            ok = false;
+        }
+    }
+    if (ok) {
+        std::cout << "Ball drag check passed.\n";
+    }
+    return ok ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
 // How long the flippers stay dead after a launch, and what is holding them
 // there.
 //
@@ -25817,6 +26324,14 @@ int main(const int argc, char* argv[])
         if (options.cabinet_plunger_check) {
             return run_plunger_check(*runtime);
         }
+        if (options.cabinet_ball_drag_check) {
+            const auto drag_rom = read_rom_bytes(options.rom_path);
+            return drag_rom
+                ? run_ball_drag_check(
+                    *runtime, *drag_rom,
+                    options.emulate_only ? nullptr : &options)
+                : EXIT_FAILURE;
+        }
         if (options.cabinet_launch_flipper_probe) {
             const auto probe_rom = read_rom_bytes(options.rom_path);
             if (!probe_rom) {
@@ -26716,7 +27231,9 @@ int main(const int argc, char* argv[])
             options.cabinet_overlay_stats,
             options.capture_session_directory,
             options.native_gameplay_bootstrap_shadow,
-            options.nudge_multiplier);
+            options.nudge_multiplier,
+            false,
+            options.drag_ball);
         const bool save_succeeded =
             save_backup_ram(*runtime, kBackupRamPath);
         return host_result == EXIT_SUCCESS && save_succeeded

@@ -869,6 +869,77 @@ left on the playfield is only something to look at, and a cabinet has no way
 to move it off. `SDL_HideCursor` is application-wide, so one call covers the
 DMD and backglass windows too, and `SDL_Quit` restores it on exit.
 
+The one exception is the ball-dragging cheat (`--drag-ball`, or
+`game.drag_ball=1`), which leaves the pointer showing and reads the left
+button over the playfield.
+
+### Dragging the ball
+
+A cheat for testing the table: while the left button is held on the
+playfield, the ball is carried under the pointer
+(`include/devils_crush/input/ball_drag.hpp`).
+
+The pointer's pixel is turned back into the ball's actor position through
+the picture `present_frame` last drew (its rectangle and rotation), and then
+through the sprite's own geometry. Bank `$08`'s descriptor puts the ball's
+sixteen-pixel sprite at its actor position less `(38, 6)`, the 38 being six
+pixels and the `$20` the hardware takes off a sprite's X. On the cartridge's
+own screen `08:40DF` draws it at that Y less the camera anchor `$A9:$AA`; the
+stitched table draws it at that Y less 50, which is `kTableWorldTop` and the
+thirty lines of score band above a screen's playfield.
+
+A held ball is taken out of play rather than fought over. The actor scheduler
+at `01:C510` runs each slot through the routine in `$3F00/$3F80`, and the
+ball's in play is `01:C721`: motion, collisions and gravity. While the button
+is down that pointer is `$C52B`, the scheduler's own closing `RTS`, so the
+ball is still filed to be drawn and does nothing else, and its position is
+whatever the host last wrote. Letting go writes `$C721` back. An earlier
+version left the ball in play and gave it the velocity to reach the pointer;
+the table knocked it about under the hand, and it could not be put inside
+anything.
+
+`01:C721` moves the ball by steps `01:DC95` worked out at the end of the
+frame before (`$B9-$BC`), so a ball let go would spend its first frame on the
+steps of whatever it was doing when it was picked up. They are cleared while
+it is held: it stays where it was put for one frame and leaves with the
+pointer's velocity in the next, held to eight pixels a frame, the Devil
+Shooter's hardest shot.
+
+The camera is the constraint. `00:F261` moves it only by the ball's own
+vertical velocity, and only while the ball is in the top 64 or bottom 48 of
+its 240 rows and heading out, so it never catches up with a ball that has
+simply appeared elsewhere; and `00:F4FC` takes what is outside the camera's
+rows off camera, where it is neither drawn nor, for most of the table, run.
+So a held ball is kept sixteen rows inside the camera, and while the pointer
+is at that edge or past it the ball is given the velocity that scrolls the
+camera toward it, up to eight rows a frame, and rides the edge there. A bonus
+stage is one screen and has no camera to bring.
+
+A ball waiting in the Devil Shooter or climbing its lane is carried too. It
+runs `01:C6C2` there, the same motion without the drain, which installs
+`01:C721` itself once the ball is left of X `$F0`; a ball let go in the lane
+goes back to `01:C6C2`. In play the launch ends when the ball touches the gate
+at the top of the lane, fixed slot `$0F`: the gate opens and closes behind it,
+and `03:645D` then clears the shooter's bit (`$53` bit 3) and makes the gate's
+type `$82`, shut, from the `$83` a ball passes through. A carried ball touches
+nothing, so the host does those two things itself as soon as the ball is
+carried left of X `$F0`, and the game has a launched ball: Enter pauses again
+and the ball cannot fall back into the lane. A gate caught mid-swing is left
+to finish, which does both for itself.
+
+The shooter holds the ball behind the table's background (`$3D00` bit 7
+clear), and the ball's own routine sets that bit again as it moves. A held
+ball has no routine, so the host sets it: the ball in the hand is drawn over
+the table.
+
+It is refused in the demo, after the last ball, for a drained or hidden
+ball, and for a ball in any other routine, such as one still being served.
+F5 lets go before it
+saves, and a ball found held with the button up is let go, so a quick state
+cannot keep one. `--cabinet-ball-drag-check` runs it on the census route's
+first ball and in bonus stage 1 with no mouse, and `dc_rom_ball_drag_check`
+runs that with the native registry and without.
+
 ### Taking the keyboard at start-up
 
 The playfield window claims the foreground itself. Showing a window is not

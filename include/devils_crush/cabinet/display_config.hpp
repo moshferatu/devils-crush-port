@@ -235,6 +235,9 @@ struct PlaySettings {
     // `game.bonus_stage`: 1 to 6 starts in that bonus stage (`--bonus-stage`);
     // 0 starts on the table.
     std::uint8_t bonus_stage = 0;
+    // `game.drag_ball` (`--drag-ball`): a cheat for testing; the left mouse
+    // button carries the ball over the playfield.
+    bool drag_ball = false;
     // `audio.music_voice_overlay` (`--no-music-voice-overlay`).
     bool music_voice_overlay = true;
     // `video.smoothing`: what F6 toggles, and F6 is remembered here.

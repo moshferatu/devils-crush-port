@@ -492,6 +492,7 @@ void append_bindings(std::string& output, const InputBindings& input)
     output += "game.rom=" + escape_value(play.rom) + '\n';
     output += "game.cabinet=" + std::to_string(play.cabinet ? 1 : 0) + '\n';
     output += "game.bonus_stage=" + std::to_string(play.bonus_stage) + '\n';
+    output += "game.drag_ball=" + std::to_string(play.drag_ball ? 1 : 0) + '\n';
     output += "audio.music_voice_overlay="
         + std::to_string(play.music_voice_overlay ? 1 : 0) + '\n';
     output += "video.smoothing=" + std::to_string(play.smoothing ? 1 : 0) + '\n';
@@ -547,6 +548,7 @@ void append_bindings(std::string& output, const InputBindings& input)
         play.nudge_multiplier = *value;
     }
     return flag("game.cabinet", play.cabinet)
+        && flag("game.drag_ball", play.drag_ball)
         && flag("audio.music_voice_overlay", play.music_voice_overlay)
         && flag("video.smoothing", play.smoothing);
 }

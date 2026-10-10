@@ -207,7 +207,7 @@ bool same_ignoring_case(std::string_view a, std::string_view b)
 enum Kind { K_HEAD, K_CHOICE, K_RANGE, K_PATH, K_TEXT, K_NUMBER, K_KEYS, K_INPUTS };
 
 enum Setting {
-    S_ROM, S_CABINET, S_BONUS_STAGE,
+    S_ROM, S_CABINET, S_BONUS_STAGE, S_DRAG_BALL,
     S_SMOOTHING, S_ROTATION, S_FULLSCREEN_PLAYFIELD, S_FULLSCREEN_DMD, S_FULLSCREEN_BACKGLASS,
     S_MONITOR_PLAYFIELD, S_MONITOR_DMD, S_MONITOR_BACKGLASS,
     S_OVERLAY,
@@ -244,8 +244,8 @@ constexpr Choice cabinet_choices[] = {{1, "Cabinet (three windows)"}, {0, "Deskt
 template <typename T, std::size_t N>
 constexpr int count_of(const T (&)[N]) { return static_cast<int>(N); }
 
-enum { TAB_GAME, TAB_VIDEO, TAB_AUDIO, TAB_CABINET, TAB_KEYBOARD, TAB_COUNT };
-constexpr const char* tab_names[TAB_COUNT] = {"Game", "Video", "Audio", "Cabinet", "Keyboard"};
+enum { TAB_GAME, TAB_VIDEO, TAB_AUDIO, TAB_CABINET, TAB_KEYBOARD, TAB_MISC, TAB_COUNT };
+constexpr const char* tab_names[TAB_COUNT] = {"Game", "Video", "Audio", "Cabinet", "Keyboard", "Misc."};
 constexpr int kRowsMax = 64;
 std::array<std::vector<Row>, TAB_COUNT> rows;
 
@@ -280,9 +280,12 @@ void build_rows()
     add_choice(TAB_GAME, S_CABINET, "Mode", cabinet_choices, count_of(cabinet_choices),
         "Cabinet: the playfield, the DMD and the backglass, each in a window of its own, for a "
         "virtual pinball cabinet. Desktop: the game in one window.");
-    add_range(TAB_GAME, S_BONUS_STAGE, "Starting Bonus Stage", 0, 6, 1, false,
+    add_range(TAB_MISC, S_BONUS_STAGE, "Starting Bonus Stage", 0, 6, 1, false,
         "Off starts on the table. A stage from 1 to 6 starts a new session there, through the "
         "game's own bonus transition.");
+    add_choice(TAB_MISC, S_DRAG_BALL, "Drag Ball With Mouse", on_off, 2,
+        "A cheat for testing the table. On: the mouse pointer shows over the game, and holding the "
+        "left button on the playfield carries the ball there. Let go while moving to throw it.");
 
     add_choice(TAB_VIDEO, S_SMOOTHING, "Smoothing", on_off, 2,
         "On: a picture for every refresh of a fast display, the table's motion and artwork eased "
@@ -486,6 +489,7 @@ int setting_get(DisplayConfig& c, int id)
     switch (id) {
     case S_CABINET: return c.play.cabinet;
     case S_BONUS_STAGE: return c.play.bonus_stage;
+    case S_DRAG_BALL: return c.play.drag_ball;
     case S_SMOOTHING: return c.play.smoothing;
     case S_ROTATION: return c.playfield_rotation_degrees;
     case S_FULLSCREEN_PLAYFIELD:
@@ -518,6 +522,7 @@ void setting_set(DisplayConfig& c, int id, int v)
     switch (id) {
     case S_CABINET: c.play.cabinet = v != 0; break;
     case S_BONUS_STAGE: c.play.bonus_stage = static_cast<std::uint8_t>(v); break;
+    case S_DRAG_BALL: c.play.drag_ball = v != 0; break;
     case S_SMOOTHING: c.play.smoothing = v != 0; break;
     case S_ROTATION: c.playfield_rotation_degrees = v; break;
     case S_FULLSCREEN_PLAYFIELD:

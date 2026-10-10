@@ -14,6 +14,7 @@ It plays like the original game, with some additional features:
 * Quick saving and quick loading
 * High scores are saved between sessions
 * Start the game in any bonus stage
+* Optional cheat for testing: drag the ball around the table with the mouse
 
 ## ROM (Required)
 

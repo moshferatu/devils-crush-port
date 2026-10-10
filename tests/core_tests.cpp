@@ -15,6 +15,7 @@
 #include "devils_crush/core/save_state.hpp"
 #include "devils_crush/emulation/pce_runtime.hpp"
 #include "devils_crush/emulation/routine_replay_corpus.hpp"
+#include "devils_crush/input/ball_drag.hpp"
 #include "devils_crush/input/pce_pad.hpp"
 #include "devils_crush/input/plunger.hpp"
 #include "devils_crush/native_runtime/actor_collision_geometry.hpp"
@@ -8452,6 +8453,158 @@ void test_nudge()
     check(!nudge_play_active({}), "missing RAM ignores physical nudge");
 }
 
+void test_ball_drag()
+{
+    using namespace devils_crush::input;
+    // A ball in play on the table: live session, three balls, the ball's
+    // actor occupied, on camera and running `01:C721`, the camera at row 200.
+    std::vector<std::byte> ram(8192U);
+    const auto put = [&ram](const std::size_t offset, const unsigned value) {
+        ram[offset] = static_cast<std::byte>(value);
+    };
+    const auto word = [&ram](const std::size_t low, const std::size_t high) {
+        return static_cast<int>(static_cast<std::int16_t>(
+            std::to_integer<unsigned>(ram[low])
+            | (std::to_integer<unsigned>(ram[high]) << 8U)));
+    };
+    put(0xD52U, 3U);
+    put(0x1000U, 0x80U);
+    put(0x1080U, 0x80U);
+    put(kDragBallHandlerLow, 0x21U);
+    put(kDragBallHandlerHigh, 0xC7U);
+    put(kDragCameraLow, 200U);
+    put(kDragBallXLow, 100U);
+    put(kDragBallYLow, 300U & 0xFFU);
+    put(kDragBallYHigh, 300U >> 8U);
+    put(kDragBallStepFirst, 0x40U);
+    const auto in_play = ram;
+    check(ball_can_be_dragged(ram), "a ball in play on the table can be carried");
+
+    for (const auto& [offset, value, what] :
+         std::array<std::tuple<std::size_t, unsigned, const char*>, 6>{{
+             {0x254U, 1U, "the demo's ball is not carried"},
+             {0x54U, 4U, "nor one behind the High Scores screen"},
+             {0xD52U, 0U, "nor after the last ball"},
+             {0x53U, 0x02U, "nor a drained one"},
+             {0x1080U, 0xA0U, "nor one the table has hidden"},
+             {kDragBallHandlerLow, 0x55U, "nor one still being served"},
+         }}) {
+        auto other = in_play;
+        other[offset] = static_cast<std::byte>(value);
+        const auto before = other;
+        check(!drag_ball(other, 120.0, 310.0) && other == before, what);
+    }
+    auto bonus = in_play;
+    bonus[0x53U] = std::byte{0x18};
+    check(ball_can_be_dragged(bonus),
+        "a bonus stage started from the shooter keeps its bit, and is carried");
+
+    // A short move: put there, with the velocity that took it there, out of
+    // play, and with nothing left of its last frame's steps.
+    check(drag_ball(ram, 103.0, 298.0), "the ball is carried");
+    check(word(kDragBallXLow, kDragBallXHigh) == 103
+            && word(kDragBallYLow, kDragBallYHigh) == 298
+            && ram[kDragBallXFraction] == std::byte{0},
+        "to the place asked for");
+    check(word(kDragBallVelocityXLow, kDragBallVelocityXHigh) == 3 * 256
+            && word(kDragBallVelocityYLow, kDragBallVelocityYHigh) == -2 * 256,
+        "keeping the velocity that took it there");
+    check(dragged_ball_handler(ram) == kDragBallHeldHandler
+            && ram[kDragBallStepFirst] == std::byte{0},
+        "and out of play while it is held");
+    check(ball_can_be_dragged(ram), "a held ball goes on being carried");
+
+    // A fast move is held to eight pixels a frame, a jump is no throw at all.
+    check(drag_ball(ram, 123.0, 298.0)
+            && word(kDragBallXLow, kDragBallXHigh) == 123
+            && word(kDragBallVelocityXLow, kDragBallVelocityXHigh)
+                == kDragMaximumSpeed,
+        "a throw is no faster than the shooter's");
+    check(drag_ball(ram, 200.0, 298.0)
+            && word(kDragBallVelocityXLow, kDragBallVelocityXHigh) == 0,
+        "and a jump across the table leaves the ball at rest");
+
+    // Past the camera's rows the ball rides their edge, with the velocity
+    // that brings the camera: up at eight rows a frame, and no further than
+    // the table's top.
+    check(drag_ball(ram, 200.0, 60.0)
+            && word(kDragBallYLow, kDragBallYHigh) == 200 + kDragCameraMargin
+            && word(kDragBallVelocityYLow, kDragBallVelocityYHigh)
+                == -kDragMaximumSpeed,
+        "above the camera the ball rides its top edge and scrolls it up");
+    check(drag_ball(ram, 200.0, 700.0)
+            && word(kDragBallYLow, kDragBallYHigh)
+                == 200 + 240 - kDragCameraMargin
+            && word(kDragBallVelocityYLow, kDragBallVelocityYHigh)
+                == kDragMaximumSpeed,
+        "and below it, its bottom edge");
+    put(kDragCameraLow, 3U);
+    check(drag_ball(ram, 200.0, 0.0)
+            && word(kDragBallVelocityYLow, kDragBallVelocityYHigh) == -3 * 256,
+        "the camera is not sent past the table's top");
+    put(kDragCameraLow, 0U);
+    check(drag_ball(ram, 200.0, 16.0) && drag_ball(ram, 200.0, 16.0)
+            && word(kDragBallVelocityYLow, kDragBallVelocityYHigh) == 0,
+        "and at the top there is nothing to scroll");
+    // A bonus stage has one screen and no camera to bring.
+    auto room = in_play;
+    room[0x53U] = std::byte{0x10};
+    room[kDragCameraLow] = std::byte{0};
+    check(drag_ball(room, 100.0, 230.0)
+            && std::to_integer<unsigned>(room[kDragBallYLow]) == 230U
+            && std::to_integer<unsigned>(room[kDragBallVelocityYHigh]) == 0U,
+        "a bonus stage's ball is not held to a camera");
+
+    // The Devil Shooter's ball is carried too, out of its own routine, and
+    // goes back to it while the shooter's bit is up.
+    auto seated = in_play;
+    seated[0x53U] = std::byte{0x08};
+    seated[kDragBallHandlerLow] = std::byte{0xC2};
+    seated[kDragBallHandlerHigh] = std::byte{0xC6};
+    seated[kDragBallXLow] = std::byte{270 & 0xFF};
+    seated[kDragBallXHigh] = std::byte{1};
+    seated[kDragLaneGateType] = std::byte{0x83};
+    seated[kDragLaneGateHandlerLow] = std::byte{0xF1};
+    seated[kDragLaneGateHandlerHigh] = std::byte{0x63};
+    check(drag_ball(seated, 270.0, 310.0)
+            && dragged_ball_handler(seated) == kDragBallHeldHandler
+            && seated[kDragBallAttribute] == std::byte{0x80},
+        "the ball is carried off the Devil Shooter, in front of the table");
+    auto in_lane = seated;
+    check(seated[0x53U] == std::byte{0x08}
+            && release_dragged_ball(in_lane)
+            && dragged_ball_handler(in_lane) == kDragBallInShooterHandler,
+        "and let go in its lane, it is still the shooter's ball");
+    auto closing = seated;
+    closing[kDragLaneGateHandlerLow] = std::byte{0x0A};
+    check(drag_ball(closing, 239.0, 310.0)
+            && closing[0x53U] == std::byte{0}
+            && closing[kDragLaneGateType] == std::byte{0x83},
+        "a gate that is closing is left to finish");
+    check(drag_ball(seated, 239.0, 310.0)
+            && seated[0x53U] == std::byte{0}
+            && seated[kDragLaneGateType] == std::byte{0x82},
+        "carried out of the lane it is launched, and the gate shuts");
+    check(release_dragged_ball(seated)
+            && dragged_ball_handler(seated) == kDragBallInPlayHandler,
+        "so let go, it is in play");
+    bonus[kDragBallHandlerLow] =
+        static_cast<std::byte>(kDragBallHeldHandler & 0xFFU);
+    bonus[kDragBallHandlerHigh] =
+        static_cast<std::byte>(kDragBallHeldHandler >> 8U);
+    check(release_dragged_ball(bonus)
+            && dragged_ball_handler(bonus) == kDragBallInPlayHandler,
+        "but in a bonus stage that bit is not the shooter's");
+
+    // Letting go gives the ball its routine back, once.
+    check(release_dragged_ball(ram)
+            && dragged_ball_handler(ram) == kDragBallInPlayHandler,
+        "letting go puts the ball back in play");
+    const auto released = ram;
+    check(!release_dragged_ball(ram) && ram == released,
+        "and a ball in play is left alone");
+}
+
 void test_plunger()
 {
     using devils_crush::input::Plunger;
@@ -8954,6 +9107,7 @@ void test_cabinet_display_config()
             .rom = "D:\\Games\\Devil's Crush (USA).pce",
             .cabinet = false,
             .bonus_stage = 4U,
+            .drag_ball = true,
             .music_voice_overlay = false,
             .smoothing = false,
             .nudge_multiplier = 2.5,
@@ -8974,8 +9128,9 @@ void test_cabinet_display_config()
         const auto retired = decode_display_config(to_bytes(chosen_text + "game.native=0\n"));
         check(retired && retired->play == chosen.play,
             "a file from when the game code was a setting still loads");
-        const std::array<std::pair<std::string_view, std::string_view>, 4> unreadable{{
+        const std::array<std::pair<std::string_view, std::string_view>, 5> unreadable{{
             {"game.cabinet=0\n", "game.cabinet=2\n"},
+            {"game.drag_ball=1\n", "game.drag_ball=yes\n"},
             {"game.bonus_stage=4\n", "game.bonus_stage=7\n"},
             {"input.nudge_multiplier=2.5\n", "input.nudge_multiplier=17\n"},
             {"video.smoothing=0\n", "video.smoothing=off\n"},
@@ -22563,6 +22718,7 @@ int main()
     test_scaler_examples();
     test_scaler_edges();
     test_cabinet_state();
+    test_ball_drag();
     test_plunger();
     test_nudge();
     test_cabinet_display_config();

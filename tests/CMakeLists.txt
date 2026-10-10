@@ -1965,6 +1965,22 @@ if(TARGET devils_crush)
         )
 
         add_test(
+            NAME dc_rom_ball_drag_check
+            CONFIGURATIONS Release
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DAPP=$<TARGET_FILE:devils_crush>"
+                "-DCONFIG=$<CONFIG>"
+                "-DROM=${DC_ROM_PATH}"
+                "-P"
+                "${CMAKE_CURRENT_SOURCE_DIR}/verify_ball_drag_check.cmake"
+        )
+        set_tests_properties(
+            dc_rom_ball_drag_check
+            PROPERTIES LABELS rom_required
+        )
+
+        add_test(
             NAME dc_rom_dragon_head_initializer_semantic
             CONFIGURATIONS Release
             COMMAND

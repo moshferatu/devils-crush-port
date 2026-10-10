@@ -11,11 +11,12 @@ and starts the game, then comes back when the game closes.
 
 | Tab | |
 | --- | --- |
-| Game | The ROM, cabinet or desktop mode, a starting bonus stage, and native or emulated game code |
+| Game | The ROM, and cabinet or desktop mode |
 | Video | Smoothing, and for the cabinet: the playfield rotation, and which monitor each window is on and whether it is fullscreen |
 | Audio | The music voice overlay |
 | Cabinet | The nudge board and nudge strength, and the analog plunger |
 | Keyboard | The keys for each PC Engine pad input, the launch keys, and each flipper's pad inputs |
+| Misc. | A starting bonus stage, and dragging the ball with the mouse |
 
 It is worked by mouse, keyboard or controller: Up and Down move, Left and
 Right change a value, Enter opens a list or waits for a key to bind, Tab (or L1
@@ -44,7 +45,7 @@ devils-crush.exe --rom "D:\path\to\Devil's Crush.pce"
 
 With no options the game plays as `devils-crush.ini` says, which is
 what the launcher edits: `game.rom`, `game.cabinet`, `game.bonus_stage`,
-`audio.music_voice_overlay`, `video.smoothing` and
+`game.drag_ball`, `audio.music_voice_overlay`, `video.smoothing` and
 `input.nudge_multiplier`. An option on the command line beats the file for
 that run, and a file without them plays with the defaults below.
 
@@ -61,6 +62,25 @@ desktop and cabinet modes and uses the game's normal bonus-stage transition:
 ```powershell
 devils-crush.exe --bonus-stage 3 --rom "D:\path\to\Devil's Crush.pce"
 ```
+
+To put the ball where a table event needs it, add `--drag-ball`, or turn on
+Drag Ball With Mouse in the launcher. The mouse pointer then shows over the
+game, and while the left button is held on the playfield the ball is carried
+under it, on the table and in the bonus stages, in desktop and cabinet modes.
+The ball keeps the pointer's motion when the button is let go, so it can be
+thrown.
+
+A carried ball is out of play: nothing on the table moves it or is hit by it
+until it is let go, so an event is set off by dropping the ball on it. On the
+table the game's camera has to come with the ball, because the game only runs
+what is on camera, and it comes at eight rows a frame: the ball rides the edge
+of the camera's screen until the pointer's place is on it, which from one end
+of the table to the other takes about a second. In desktop mode, holding the
+ball at the top or bottom edge of the window scrolls the table the same way.
+The ball can be taken straight out of the Devil Shooter without launching
+it, and counts as launched once it is carried out of the shooter's lane. It
+is a cheat for testing, so scores made with it are saved like any
+others, and it is not available with `--capture-session`.
 
 | Key | |
 | --- | --- |
