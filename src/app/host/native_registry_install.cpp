@@ -5,6 +5,109 @@
 
 namespace devils_crush::app::host {
 
+namespace {
+
+using DeploymentCounter = std::uint64_t NativeRegistryDeployment::*;
+
+// The three totals a family of instruction hooks is counted under.
+struct InstructionHookTotals {
+    DeploymentCounter entries;
+    DeploymentCounter accepted;
+    DeploymentCounter master_cycles;
+};
+
+constexpr InstructionHookTotals kCoreCapabilityTotals{
+    &NativeRegistryDeployment::core_capability_entries,
+    &NativeRegistryDeployment::core_capability_accepted,
+    &NativeRegistryDeployment::core_capability_master_cycles,
+};
+constexpr InstructionHookTotals kAuxiliaryTranscriptTotals{
+    &NativeRegistryDeployment::auxiliary_transcript_entries,
+    &NativeRegistryDeployment::auxiliary_transcript_accepted,
+    &NativeRegistryDeployment::auxiliary_transcript_master_cycles,
+};
+
+// One group of instructions handed to the native path outside the admitted
+// routines' census rows.
+struct InstructionHooks {
+    std::span<const RoutineKey> routines;
+    // Names the group when a hook cannot be installed.
+    std::string_view label;
+    InstructionHookTotals totals;
+    // The group's own counts, where it keeps them: of every arrival, and of
+    // every arrival the native path took.
+    DeploymentCounter entries = nullptr;
+    DeploymentCounter accepted = nullptr;
+    // Whether the replacement is given the ROM.
+    bool reads_rom = true;
+};
+
+// What every group is installed with.
+struct InstructionHookInstaller {
+    PceRuntime& runtime;
+    const std::vector<std::byte>& replacement_rom;
+    std::span<const RoutineKey> claimed_routines;
+    NativeRegistryDeployment& deployment;
+};
+
+// Installs a replacement hook at each of the group's instructions, but for
+// any an explicit hook has claimed. False, having said so, when one cannot
+// be installed.
+[[nodiscard]] bool install_instruction_hooks(
+    const InstructionHookInstaller& installer,
+    const InstructionHooks& hooks)
+{
+    for (const auto routine : hooks.routines) {
+        if (std::find(
+                installer.claimed_routines.begin(),
+                installer.claimed_routines.end(),
+                routine)
+            != installer.claimed_routines.end()) {
+            continue;
+        }
+        if (!installer.runtime.install_execution_hook({
+                .routine = routine,
+                .mode = HookMode::replace,
+                .replacement_callback =
+                    [&deployment = installer.deployment,
+                     &replacement_rom = installer.replacement_rom,
+                     totals = hooks.totals,
+                     entries = hooks.entries,
+                     accepted = hooks.accepted,
+                     reads_rom = hooks.reads_rom](
+                        const RoutineEntry& entry,
+                        const std::span<const std::byte> work_ram) {
+                        ++(deployment.*totals.entries);
+                        if (entries != nullptr) {
+                            ++(deployment.*entries);
+                        }
+                        deployment.span.observe(entry.absolute_master_cycle);
+                        auto result = reads_rom
+                            ? replace_native_gameplay_routine(
+                                  entry, work_ram, replacement_rom)
+                            : replace_native_gameplay_routine(
+                                  entry, work_ram, {});
+                        if (result) {
+                            ++(deployment.*totals.accepted);
+                            if (accepted != nullptr) {
+                                ++(deployment.*accepted);
+                            }
+                            deployment.*totals.master_cycles +=
+                                result->body_master_cycles;
+                        }
+                        return result;
+                    },
+            })) {
+            std::cerr << "Could not install native " << hooks.label
+                      << " hook.\n";
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
+
 [[nodiscard]] bool install_native_registry(
     PceRuntime& runtime,
     const CommandLine& options,
@@ -125,6 +228,12 @@ namespace devils_crush::app::host {
                   << ".\n";
         return false;
     }
+    const InstructionHookInstaller hooks{
+        .runtime = runtime,
+        .replacement_rom = replacement_rom,
+        .claimed_routines = claimed_routines,
+        .deployment = deployment,
+    };
     // The full VCE palette upload is a single TIA opcode at 00:EB46, reached
     // from the admitted 00:EB30 transaction. It is not a separately admitted
     // game routine, but it still needs a hook at the instruction boundary so
@@ -134,31 +243,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x00U,
         .logical_pc = 0xEB46U,
     };
-    if (std::find(
-            claimed_routines.begin(),
-            claimed_routines.end(),
-            kPaletteTiaInstruction)
-        == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kPaletteTiaInstruction,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    ++deployment.core_tia_transfers;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kPaletteTiaInstruction, 1U},
+            .label = "palette TIA",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_tia_transfers,
         })) {
-        std::cerr << "Could not install native palette TIA hook.\n";
         return false;
     }
     // Like TIA, BBR0 is an indivisible core opcode rather than a game-routine
@@ -168,31 +258,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x00U,
         .logical_pc = 0xF423U,
     };
-    if (std::find(
-            claimed_routines.begin(),
-            claimed_routines.end(),
-            kTilemapBbr0Instruction)
-        == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kTilemapBbr0Instruction,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    ++deployment.core_bbr0_instructions;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kTilemapBbr0Instruction, 1U},
+            .label = "tilemap BBR0",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_bbr0_instructions,
         })) {
-        std::cerr << "Could not install native tilemap BBR0 hook.\n";
         return false;
     }
     // The substep loops contain two BBR3 <$77 instructions.  Their native
@@ -202,33 +273,13 @@ namespace devils_crush::app::host {
         {.physical_bank = 0x01U, .logical_pc = 0xC6E3U},
         {.physical_bank = 0x01U, .logical_pc = 0xC756U},
     }};
-    for (const auto routine : kSubstepBbr3Instructions) {
-        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
-            != claimed_routines.end()) {
-            continue;
-        }
-        if (!runtime.install_execution_hook({
-            .routine = routine,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    ++deployment.core_bbr3_instructions;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = kSubstepBbr3Instructions,
+            .label = "substep BBR3",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_bbr3_instructions,
         })) {
-            std::cerr << "Could not install native substep BBR3 hook.\n";
-            return false;
-        }
+        return false;
     }
     // The collision sweep uses the same BBR3 opcode and has native arms at
     // CB81 and CB8A. It stays in the core for the original event samples.
@@ -236,31 +287,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x01U,
         .logical_pc = 0xCB7EU,
     };
-    if (std::find(
-            claimed_routines.begin(),
-            claimed_routines.end(),
-            kCollisionTailBbr3Instruction)
-        == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kCollisionTailBbr3Instruction,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    ++deployment.core_bbr3_instructions;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kCollisionTailBbr3Instruction, 1U},
+            .label = "collision BBR3",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_bbr3_instructions,
         })) {
-        std::cerr << "Could not install native collision BBR3 hook.\n";
         return false;
     }
     // The preceding collision-sweep BBS2 has native arms at CB74 and CB76;
@@ -269,31 +301,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x01U,
         .logical_pc = 0xCB71U,
     };
-    if (std::find(
-            claimed_routines.begin(),
-            claimed_routines.end(),
-            kCollisionTailBbs2Instruction)
-        == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kCollisionTailBbs2Instruction,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    ++deployment.core_bbs2_instructions;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kCollisionTailBbs2Instruction, 1U},
+            .label = "collision BBS2",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_bbs2_instructions,
         })) {
-        std::cerr << "Could not install native collision BBS2 hook.\n";
         return false;
     }
     // D4B2 is an RTS embedded in the active-flipper owner. Its target comes
@@ -302,31 +315,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x01U,
         .logical_pc = 0xD4B2U,
     };
-    if (std::find(
-            claimed_routines.begin(),
-            claimed_routines.end(),
-            kFlipperOwnerRtsInstruction)
-        == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kFlipperOwnerRtsInstruction,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    ++deployment.core_rts_instructions;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kFlipperOwnerRtsInstruction, 1U},
+            .label = "flipper-owner RTS",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_rts_instructions,
         })) {
-        std::cerr << "Could not install native flipper-owner RTS hook.\n";
         return false;
     }
     // 02:5933 is the upper-table effect's shared live-stack return.  As with
@@ -336,31 +330,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x02U,
         .logical_pc = 0x5933U,
     };
-    if (std::find(
-            claimed_routines.begin(),
-            claimed_routines.end(),
-            kUpperTableReturnInstruction)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kUpperTableReturnInstruction,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    ++deployment.core_rts_instructions;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kUpperTableReturnInstruction, 1U},
+            .label = "upper-table RTS",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_rts_instructions,
         })) {
-        std::cerr << "Could not install native upper-table RTS hook.\n";
         return false;
     }
     // These helper returns are reached from several live callers.  Keep the
@@ -369,9 +344,9 @@ namespace devils_crush::app::host {
     // 5CD5 is the Side-Worm selector return, while C9DE is the active
     // range-helper's caller-owned return; each deliberately remains a core
     // RTS instruction rather than a synthetic continuation of its caller.
-    constexpr std::array<RoutineKey, 13U> kGameplayHelperRtsInstructions{{
         // Synthetic vector dispatch: execute the live RTS, never absorb it
         // as the completion of the enclosing collision routine.
+    constexpr std::array<RoutineKey, 13U> kGameplayHelperRtsInstructions{{
         {.physical_bank = 0x01U, .logical_pc = 0xCBF9U},
         {.physical_bank = 0x01U, .logical_pc = 0xC9DEU},
         {.physical_bank = 0x01U, .logical_pc = 0xC70AU},
@@ -386,33 +361,13 @@ namespace devils_crush::app::host {
         {.physical_bank = 0x03U, .logical_pc = 0x73FDU},
         {.physical_bank = 0x03U, .logical_pc = 0x76A8U},
     }};
-    for (const auto routine : kGameplayHelperRtsInstructions) {
-        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
-            != claimed_routines.end()) {
-            continue;
-        }
-        if (!runtime.install_execution_hook({
-                .routine = routine,
-                .mode = HookMode::replace,
-                .replacement_callback = [&deployment, &replacement_rom](
-                    const RoutineEntry& entry,
-                    const std::span<const std::byte> work_ram) {
-                    ++deployment.core_capability_entries;
-                    deployment.span.observe(entry.absolute_master_cycle);
-                    auto result = replace_native_gameplay_routine(
-                        entry, work_ram, replacement_rom);
-                    if (result) {
-                        ++deployment.core_capability_accepted;
-                        ++deployment.core_rts_instructions;
-                        deployment.core_capability_master_cycles +=
-                            result->body_master_cycles;
-                    }
-                    return result;
-                },
-            })) {
-            std::cerr << "Could not install native gameplay-helper RTS hook.\\n";
-            return false;
-        }
+    if (!install_instruction_hooks(hooks, {
+            .routines = kGameplayHelperRtsInstructions,
+            .label = "gameplay-helper RTS",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_rts_instructions,
+        })) {
+        return false;
     }
     // The VDC status read is the interrupt acknowledge itself. It cannot be
     // transcribed, but the core can retain the original device read exactly.
@@ -420,31 +375,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x00U,
         .logical_pc = 0xE05CU,
     };
-    if (std::find(
-            claimed_routines.begin(),
-            claimed_routines.end(),
-            kVdcStatusReadInstruction)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kVdcStatusReadInstruction,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    ++deployment.core_vdc_status_reads;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kVdcStatusReadInstruction, 1U},
+            .label = "VDC-status read",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_vdc_status_reads,
         })) {
-        std::cerr << "Could not install native VDC-status read hook.\n";
         return false;
     }
     // The sprite attribute updater reads back VDC data at these two adjacent
@@ -461,33 +397,13 @@ namespace devils_crush::app::host {
             .logical_pc = 0xDA0BU,
         },
     }};
-    for (const auto routine : kVdcDataReadInstructions) {
-        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
-                != claimed_routines.end()) {
-            continue;
-        }
-        if (!runtime.install_execution_hook({
-                .routine = routine,
-                .mode = HookMode::replace,
-                .replacement_callback = [&deployment, &replacement_rom](
-                    const RoutineEntry& entry,
-                    const std::span<const std::byte> work_ram) {
-                    ++deployment.core_capability_entries;
-                    deployment.span.observe(entry.absolute_master_cycle);
-                    auto result = replace_native_gameplay_routine(
-                        entry, work_ram, replacement_rom);
-                    if (result) {
-                        ++deployment.core_capability_accepted;
-                        ++deployment.core_vdc_data_reads;
-                        deployment.core_capability_master_cycles +=
-                            result->body_master_cycles;
-                    }
-                    return result;
-                },
-            })) {
-            std::cerr << "Could not install native VDC-data read hook.\n";
-            return false;
-        }
+    if (!install_instruction_hooks(hooks, {
+            .routines = kVdcDataReadInstructions,
+            .label = "VDC-data read",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_vdc_data_reads,
+        })) {
+        return false;
     }
     // D950 is the deterministic address/setup half of the sprite-attribute
     // transaction. It stops at DA06 so the selected-register VDC read remains
@@ -496,30 +412,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x01U,
         .logical_pc = 0xD950U,
     };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(),
-            kVdcSpriteAttributePrefix)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kVdcSpriteAttributePrefix,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.auxiliary_transcript_entries;
-                ++deployment.auxiliary_vdc_sprite_attribute_prefix_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.auxiliary_transcript_accepted;
-                    deployment.auxiliary_transcript_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kVdcSpriteAttributePrefix, 1U},
+            .label = "VDC sprite-attribute prefix",
+            .totals = kAuxiliaryTranscriptTotals,
+            .entries = &NativeRegistryDeployment::auxiliary_vdc_sprite_attribute_prefix_entries,
         })) {
-        std::cerr << "Could not install native VDC sprite-attribute prefix hook.\n";
         return false;
     }
     // F605 prepares one actor's MPR-backed graphics record. It makes the
@@ -530,33 +428,13 @@ namespace devils_crush::app::host {
         {.physical_bank = 0x00U, .logical_pc = 0xF660U},
         {.physical_bank = 0x00U, .logical_pc = 0xF664U},
     }};
-    for (const auto routine : kActorScriptRecordLoaderEntries) {
-        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
-            != claimed_routines.end()) {
-            continue;
-        }
-        if (!runtime.install_execution_hook({
-                .routine = routine,
-                .mode = HookMode::replace,
-                .replacement_callback = [&deployment, &replacement_rom](
-                    const RoutineEntry& entry,
-                    const std::span<const std::byte> work_ram) {
-                    ++deployment.auxiliary_transcript_entries;
-                    ++deployment.auxiliary_actor_script_record_loader_entries;
-                    deployment.span.observe(entry.absolute_master_cycle);
-                    auto result = replace_native_gameplay_routine(
-                        entry, work_ram, replacement_rom);
-                    if (result) {
-                        ++deployment.auxiliary_transcript_accepted;
-                        deployment.auxiliary_transcript_master_cycles +=
-                            result->body_master_cycles;
-                    }
-                    return result;
-                },
-            })) {
-            std::cerr << "Could not install native actor-script loader hook.\n";
-            return false;
-        }
+    if (!install_instruction_hooks(hooks, {
+            .routines = kActorScriptRecordLoaderEntries,
+            .label = "actor-script loader",
+            .totals = kAuxiliaryTranscriptTotals,
+            .entries = &NativeRegistryDeployment::auxiliary_actor_script_record_loader_entries,
+        })) {
+        return false;
     }
     // 02:51AF is now registry-admitted, including expiry. Do not install a
     // second auxiliary hook for the same address.
@@ -606,34 +484,17 @@ namespace devils_crush::app::host {
         {.physical_bank = 0x45U, .logical_pc = 0x4168U},
         {.physical_bank = 0x45U, .logical_pc = 0x4B5DU},
     }};
-    for (const auto routine : kMusicSeiInstructions) {
-        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
-            != claimed_routines.end()) {
-            continue;
-        }
-        if (!runtime.install_execution_hook({
-            .routine = routine,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    ++deployment.core_sei_instructions;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
-            })) {
-            std::cerr << "Could not install native music SEI hook.\n";
-            return false;
-        }
+    if (!install_instruction_hooks(hooks, {
+            .routines = kMusicSeiInstructions,
+            .label = "music SEI",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_sei_instructions,
+        })) {
+        return false;
     }
+        // The collision scanner's $CC04 call opens the bounded $CCD5
+        // comparison walk.  Its callee remains independently scheduled;
+        // retain only the exact stack-producing JSR here.
     constexpr std::array<RoutineKey, 11U> kExactJsrInstructions{{
         {.physical_bank = 0x45U, .logical_pc = 0x408FU},
         {.physical_bank = 0x45U, .logical_pc = 0x4099U},
@@ -645,126 +506,50 @@ namespace devils_crush::app::host {
         {.physical_bank = 0x01U, .logical_pc = 0xD4A4U},
         {.physical_bank = 0x01U, .logical_pc = 0xC603U},
         {.physical_bank = 0x01U, .logical_pc = 0xC7CFU},
-        // The collision scanner's $CC04 call opens the bounded $CCD5
-        // comparison walk.  Its callee remains independently scheduled;
-        // retain only the exact stack-producing JSR here.
         {.physical_bank = 0x01U, .logical_pc = 0xCC04U},
     }};
-    for (const auto routine : kExactJsrInstructions) {
-        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
-            != claimed_routines.end()) {
-            continue;
-        }
-        if (!runtime.install_execution_hook({
-                .routine = routine,
-                .mode = HookMode::replace,
-                .replacement_callback = [&deployment, &replacement_rom](
-                    const RoutineEntry& entry,
-                    const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    ++deployment.core_jsr_instructions;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
-            })) {
-            std::cerr << "Could not install native exact JSR hook.\n";
-            return false;
-        }
+    if (!install_instruction_hooks(hooks, {
+            .routines = kExactJsrInstructions,
+            .label = "exact JSR",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_jsr_instructions,
+        })) {
+        return false;
     }
     constexpr RoutineKey kMusicPsgReturnInstruction{
         .physical_bank = 0x45U,
         .logical_pc = 0x4210U,
     };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(), kMusicPsgReturnInstruction)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kMusicPsgReturnInstruction,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    ++deployment.core_rts_instructions;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kMusicPsgReturnInstruction, 1U},
+            .label = "music RTS",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_rts_instructions,
         })) {
-        std::cerr << "Could not install native music RTS hook.\n";
         return false;
     }
     constexpr RoutineKey kSharedActorReturnInstruction{
         .physical_bank = 0x03U,
         .logical_pc = 0x7525U,
     };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(), kSharedActorReturnInstruction)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kSharedActorReturnInstruction,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    ++deployment.core_rts_instructions;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kSharedActorReturnInstruction, 1U},
+            .label = "shared actor RTS",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_rts_instructions,
         })) {
-        std::cerr << "Could not install native shared actor RTS hook.\n";
         return false;
     }
     constexpr RoutineKey kCollisionScannerReturnInstruction{
         .physical_bank = 0x01U,
         .logical_pc = 0xCCD4U,
     };
-    if (std::find(
-            claimed_routines.begin(),
-            claimed_routines.end(),
-            kCollisionScannerReturnInstruction)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kCollisionScannerReturnInstruction,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    ++deployment.core_rts_instructions;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kCollisionScannerReturnInstruction, 1U},
+            .label = "collision-scanner RTS",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_rts_instructions,
         })) {
-        std::cerr << "Could not install native collision-scanner RTS hook.\n";
         return false;
     }
     // The sibling hit return is reached by the collision-mask lookup with
@@ -774,62 +559,24 @@ namespace devils_crush::app::host {
         .physical_bank = 0x01U,
         .logical_pc = 0xCCD2U,
     };
-    if (std::find(
-            claimed_routines.begin(),
-            claimed_routines.end(),
-            kCollisionScannerHitReturnInstruction)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kCollisionScannerHitReturnInstruction,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    ++deployment.core_rts_instructions;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kCollisionScannerHitReturnInstruction, 1U},
+            .label = "collision hit-return RTS",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_rts_instructions,
         })) {
-        std::cerr << "Could not install native collision hit-return RTS hook.\n";
         return false;
     }
     constexpr RoutineKey kKnightNoHitReturnInstruction{
         .physical_bank = 0x03U,
         .logical_pc = 0x73D7U,
     };
-    if (std::find(
-            claimed_routines.begin(),
-            claimed_routines.end(),
-            kKnightNoHitReturnInstruction)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kKnightNoHitReturnInstruction,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    ++deployment.core_rts_instructions;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kKnightNoHitReturnInstruction, 1U},
+            .label = "Knight no-hit RTS",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_rts_instructions,
         })) {
-        std::cerr << "Could not install native Knight no-hit RTS hook.\n";
         return false;
     }
     constexpr std::array<RoutineKey, 4U> kFlipperOwnerInstructions{{
@@ -838,66 +585,26 @@ namespace devils_crush::app::host {
         {.physical_bank = 0x01U, .logical_pc = 0xD4ADU},
         {.physical_bank = 0x01U, .logical_pc = 0xD4B0U},
     }};
-    for (const auto routine : kFlipperOwnerInstructions) {
-        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
-            != claimed_routines.end()) {
-            continue;
-        }
-        if (!runtime.install_execution_hook({
-                .routine = routine,
-                .mode = HookMode::replace,
-                .replacement_callback = [&deployment, &replacement_rom](
-                    const RoutineEntry& entry,
-                    const std::span<const std::byte> work_ram) {
-                    ++deployment.core_capability_entries;
-                    deployment.span.observe(entry.absolute_master_cycle);
-                    auto result = replace_native_gameplay_routine(
-                        entry, work_ram, replacement_rom);
-                    if (result) {
-                        ++deployment.core_capability_accepted;
-                        ++deployment.core_flipper_owner_instructions;
-                        deployment.core_capability_master_cycles +=
-                            result->body_master_cycles;
-                    }
-                    return result;
-                },
-            })) {
-            std::cerr << "Could not install native flipper-owner hook.\n";
-            return false;
-        }
+    if (!install_instruction_hooks(hooks, {
+            .routines = kFlipperOwnerInstructions,
+            .label = "flipper-owner",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_flipper_owner_instructions,
+        })) {
+        return false;
     }
     constexpr std::array<RoutineKey, 3U> kActorSchedulerInstructions{{
         {.physical_bank = 0x03U, .logical_pc = 0x751EU},
         {.physical_bank = 0x03U, .logical_pc = 0x7521U},
         {.physical_bank = 0x03U, .logical_pc = 0x7523U},
     }};
-    for (const auto routine : kActorSchedulerInstructions) {
-        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
-            != claimed_routines.end()) {
-            continue;
-        }
-        if (!runtime.install_execution_hook({
-                .routine = routine,
-                .mode = HookMode::replace,
-                .replacement_callback = [&deployment, &replacement_rom](
-                    const RoutineEntry& entry,
-                    const std::span<const std::byte> work_ram) {
-                    ++deployment.core_capability_entries;
-                    deployment.span.observe(entry.absolute_master_cycle);
-                    auto result = replace_native_gameplay_routine(
-                        entry, work_ram, replacement_rom);
-                    if (result) {
-                        ++deployment.core_capability_accepted;
-                        ++deployment.core_actor_scheduler_instructions;
-                        deployment.core_capability_master_cycles +=
-                            result->body_master_cycles;
-                    }
-                    return result;
-                },
-            })) {
-            std::cerr << "Could not install native actor-scheduler hook.\n";
-            return false;
-        }
+    if (!install_instruction_hooks(hooks, {
+            .routines = kActorSchedulerInstructions,
+            .label = "actor-scheduler",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_actor_scheduler_instructions,
+        })) {
+        return false;
     }
     constexpr std::array<RoutineKey, 16U> kMusicJumpInstructions{{
         {.physical_bank = 0x45U, .logical_pc = 0x4000U},
@@ -965,32 +672,12 @@ namespace devils_crush::app::host {
         {.physical_bank = 0x45U, .logical_pc = 0x402CU},
         {.physical_bank = 0x45U, .logical_pc = 0x4B5EU},
     }};
-    for (const auto routine : kMusicSequencerContinuations) {
-        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
-            != claimed_routines.end()) {
-            continue;
-        }
-        if (!runtime.install_execution_hook({
-                .routine = routine,
-                .mode = HookMode::replace,
-                .replacement_callback = [&deployment, &replacement_rom](
-                    const RoutineEntry& entry,
-                    const std::span<const std::byte> work_ram) {
-                    ++deployment.core_capability_entries;
-                    deployment.span.observe(entry.absolute_master_cycle);
-                    auto result = replace_native_gameplay_routine(
-                        entry, work_ram, replacement_rom);
-                    if (result) {
-                        ++deployment.core_capability_accepted;
-                        deployment.core_capability_master_cycles +=
-                            result->body_master_cycles;
-                    }
-                    return result;
-                },
-            })) {
-            std::cerr << "Could not install native music continuation hook.\n";
-            return false;
-        }
+    if (!install_instruction_hooks(hooks, {
+            .routines = kMusicSequencerContinuations,
+            .label = "music continuation",
+            .totals = kCoreCapabilityTotals,
+        })) {
+        return false;
     }
     // The active Giant-Face animator returns through 76CA and immediately
     // runs this five-opcode phase dispatcher. Each byte stays core-owned so
@@ -1002,33 +689,13 @@ namespace devils_crush::app::host {
         {.physical_bank = 0x03U, .logical_pc = 0x76A4U},
         {.physical_bank = 0x03U, .logical_pc = 0x76A6U},
     }};
-    for (const auto routine : kGiantFaceWaitDispatchInstructions) {
-        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
-            != claimed_routines.end()) {
-            continue;
-        }
-        if (!runtime.install_execution_hook({
-                .routine = routine,
-                .mode = HookMode::replace,
-                .replacement_callback = [&deployment, &replacement_rom](
-                    const RoutineEntry& entry,
-                    const std::span<const std::byte> work_ram) {
-                    ++deployment.core_capability_entries;
-                    deployment.span.observe(entry.absolute_master_cycle);
-                    auto result = replace_native_gameplay_routine(
-                        entry, work_ram, replacement_rom);
-                    if (result) {
-                        ++deployment.core_capability_accepted;
-                        ++deployment.core_giant_face_wait_dispatch_instructions;
-                        deployment.core_capability_master_cycles +=
-                            result->body_master_cycles;
-                    }
-                    return result;
-                },
-            })) {
-            std::cerr << "Could not install native Giant-Face wait-dispatch hook.\n";
-            return false;
-        }
+    if (!install_instruction_hooks(hooks, {
+            .routines = kGiantFaceWaitDispatchInstructions,
+            .label = "Giant-Face wait-dispatch",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_giant_face_wait_dispatch_instructions,
+        })) {
+        return false;
     }
     // The final four-tick countdown is shared by the Giant-Face helmet and
     // its sibling actor routes.  Its replacement carries every original
@@ -1073,28 +740,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x45U,
         .logical_pc = 0x4667U,
     };
-    if (std::find(claimed_routines.begin(), claimed_routines.end(), kMusicDurationTail)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kMusicDurationTail,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                ++deployment.core_music_duration_tail_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kMusicDurationTail, 1U},
+            .label = "music duration-tail",
+            .totals = kCoreCapabilityTotals,
+            .entries = &NativeRegistryDeployment::core_music_duration_tail_entries,
         })) {
-        std::cerr << "Could not install native music duration-tail hook.\n";
         return false;
     }
     // The duration decoder's matching RTS uses the caller's live frame.  Its
@@ -1104,29 +755,13 @@ namespace devils_crush::app::host {
         .physical_bank = 0x45U,
         .logical_pc = 0x46D6U,
     };
-    if (std::find(claimed_routines.begin(), claimed_routines.end(), kMusicDurationReturn)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kMusicDurationReturn,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                ++deployment.core_music_duration_return_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    ++deployment.core_rts_instructions;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kMusicDurationReturn, 1U},
+            .label = "music duration-return",
+            .totals = kCoreCapabilityTotals,
+            .entries = &NativeRegistryDeployment::core_music_duration_return_entries,
+            .accepted = &NativeRegistryDeployment::core_rts_instructions,
         })) {
-        std::cerr << "Could not install native music duration-return hook.\n";
         return false;
     }
     // The common Mercy-Star post-callback tail only chooses the shared
@@ -1136,29 +771,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x02U,
         .logical_pc = 0x5003U,
     };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(), kMercyStarNotLastTail)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kMercyStarNotLastTail,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                ++deployment.core_mercy_star_not_last_tail_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kMercyStarNotLastTail, 1U},
+            .label = "Mercy-Star tail",
+            .totals = kCoreCapabilityTotals,
+            .entries = &NativeRegistryDeployment::core_mercy_star_not_last_tail_entries,
         })) {
-        std::cerr << "Could not install native Mercy-Star tail hook.\n";
         return false;
     }
     // 02:592B's idle arm is only a zero load and a taken branch into the
@@ -1167,29 +785,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x02U,
         .logical_pc = 0x592BU,
     };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(), kUpperTableIdleGate)
-        == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kUpperTableIdleGate,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                ++deployment.core_upper_table_idle_gate_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kUpperTableIdleGate, 1U},
+            .label = "upper-table idle gate",
+            .totals = kCoreCapabilityTotals,
+            .entries = &NativeRegistryDeployment::core_upper_table_idle_gate_entries,
         })) {
-        std::cerr << "Could not install native upper-table idle gate hook.\n";
         return false;
     }
     // 02:449B's mapped-parent gate returns immediately when the parent is
@@ -1198,29 +799,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x02U,
         .logical_pc = 0x449BU,
     };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(), kUpperTableParentIdleGate)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kUpperTableParentIdleGate,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                ++deployment.core_upper_table_parent_idle_gate_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kUpperTableParentIdleGate, 1U},
+            .label = "upper-table parent idle gate",
+            .totals = kCoreCapabilityTotals,
+            .entries = &NativeRegistryDeployment::core_upper_table_parent_idle_gate_entries,
         })) {
-        std::cerr << "Could not install native upper-table parent idle gate hook.\n";
         return false;
     }
     // 02:452E's upper-table actor wait arm reads a zero gate and an active
@@ -1230,29 +814,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x02U,
         .logical_pc = 0x452EU,
     };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(), kUpperTableActorIdleGate)
-        == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kUpperTableActorIdleGate,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                ++deployment.core_upper_table_actor_idle_gate_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kUpperTableActorIdleGate, 1U},
+            .label = "upper-table actor idle gate",
+            .totals = kCoreCapabilityTotals,
+            .entries = &NativeRegistryDeployment::core_upper_table_actor_idle_gate_entries,
         })) {
-        std::cerr << "Could not install native upper-table actor idle gate hook.\n";
         return false;
     }
     // 05:7356's stage-six hazard normally decrements a live timer and returns.
@@ -1262,29 +829,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x05U,
         .logical_pc = 0x7356U,
     };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(), kBonusHazardTimer)
-        == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kBonusHazardTimer,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                ++deployment.core_bonus_hazard_timer_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kBonusHazardTimer, 1U},
+            .label = "bonus-hazard timer",
+            .totals = kCoreCapabilityTotals,
+            .entries = &NativeRegistryDeployment::core_bonus_hazard_timer_entries,
         })) {
-        std::cerr << "Could not install native bonus-hazard timer hook.\n";
         return false;
     }
     // 01:DE9C emits a bounded pair of VDC words per row. It remains an
@@ -1293,29 +843,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x01U,
         .logical_pc = 0xDE9CU,
     };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(), kBank1VdcRowUpload)
-        == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kBank1VdcRowUpload,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                ++deployment.core_bank1_vdc_row_upload_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kBank1VdcRowUpload, 1U},
+            .label = "bank-01 VDC row-upload",
+            .totals = kCoreCapabilityTotals,
+            .entries = &NativeRegistryDeployment::core_bank1_vdc_row_upload_entries,
         })) {
-        std::cerr << "Could not install native bank-01 VDC row-upload hook.\n";
         return false;
     }
     // This post-collision timer tail is shared by several bank-02 actors.
@@ -1325,31 +858,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x02U,
         .logical_pc = 0x4424U,
     };
-    if (std::find(
-            claimed_routines.begin(),
-            claimed_routines.end(),
-            kSharedCollisionFreeTimerTail)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kSharedCollisionFreeTimerTail,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.core_capability_entries;
-                ++deployment.core_shared_collision_free_timer_tail_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.core_capability_accepted;
-                    deployment.core_capability_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kSharedCollisionFreeTimerTail, 1U},
+            .label = "shared collision-free timer tail",
+            .totals = kCoreCapabilityTotals,
+            .entries = &NativeRegistryDeployment::core_shared_collision_free_timer_tail_entries,
         })) {
-        std::cerr << "Could not install native shared collision-free timer tail hook.\n";
         return false;
     }
     // These fixed descriptors deliberately hand the original overlapping
@@ -1361,33 +875,13 @@ namespace devils_crush::app::host {
         {.physical_bank = 0x00U, .logical_pc = 0xE950U},
         {.physical_bank = 0x08U, .logical_pc = 0x559FU},
     }};
-    for (const auto routine : kCoreTiiInstructions) {
-        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
-            != claimed_routines.end()) {
-            continue;
-        }
-        if (!runtime.install_execution_hook({
-                .routine = routine,
-                .mode = HookMode::replace,
-                .replacement_callback = [&deployment, &replacement_rom](
-                    const RoutineEntry& entry,
-                    const std::span<const std::byte> work_ram) {
-                    ++deployment.core_capability_entries;
-                    deployment.span.observe(entry.absolute_master_cycle);
-                    auto result = replace_native_gameplay_routine(
-                        entry, work_ram, replacement_rom);
-                    if (result) {
-                        ++deployment.core_capability_accepted;
-                        ++deployment.core_tii_transfers;
-                        deployment.core_capability_master_cycles +=
-                            result->body_master_cycles;
-                    }
-                    return result;
-                },
-            })) {
-            std::cerr << "Could not install native core TII hook.\n";
-            return false;
-        }
+    if (!install_instruction_hooks(hooks, {
+            .routines = kCoreTiiInstructions,
+            .label = "core TII",
+            .totals = kCoreCapabilityTotals,
+            .accepted = &NativeRegistryDeployment::core_tii_transfers,
+        })) {
+        return false;
     }
     // E979 is the bounded caller continuation after E9B6's palette-block
     // interpolation.  It returns to the already core-owned JSR at E976 on
@@ -1397,30 +891,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x00U,
         .logical_pc = 0xE979U,
     };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(),
-            kPaletteFadeCallerTail)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kPaletteFadeCallerTail,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.auxiliary_transcript_entries;
-                ++deployment.auxiliary_palette_fade_tail_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.auxiliary_transcript_accepted;
-                    deployment.auxiliary_transcript_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kPaletteFadeCallerTail, 1U},
+            .label = "palette-fade tail",
+            .totals = kAuxiliaryTranscriptTotals,
+            .entries = &NativeRegistryDeployment::auxiliary_palette_fade_tail_entries,
         })) {
-        std::cerr << "Could not install native palette-fade tail hook.\n";
         return false;
     }
     // The coroutine scheduler ends at a shared RTS whose stack frame depends
@@ -1431,30 +907,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x01U,
         .logical_pc = 0xC5E9U,
     };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(),
-            kCoroutineSchedulerReturn)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kCoroutineSchedulerReturn,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.auxiliary_transcript_entries;
-                ++deployment.auxiliary_coroutine_scheduler_rts_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.auxiliary_transcript_accepted;
-                    deployment.auxiliary_transcript_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kCoroutineSchedulerReturn, 1U},
+            .label = "coroutine-scheduler RTS",
+            .totals = kAuxiliaryTranscriptTotals,
+            .entries = &NativeRegistryDeployment::auxiliary_coroutine_scheduler_rts_entries,
         })) {
-        std::cerr << "Could not install native coroutine-scheduler RTS hook.\n";
         return false;
     }
     // This per-voice load has no stack or device side effects, so it remains
@@ -1464,30 +922,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x45U,
         .logical_pc = 0x4092U,
     };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(),
-            kMusicVoiceStateLoad)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kMusicVoiceStateLoad,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.auxiliary_transcript_entries;
-                ++deployment.auxiliary_music_voice_state_load_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.auxiliary_transcript_accepted;
-                    deployment.auxiliary_transcript_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kMusicVoiceStateLoad, 1U},
+            .label = "music voice-state load",
+            .totals = kAuxiliaryTranscriptTotals,
+            .entries = &NativeRegistryDeployment::auxiliary_music_voice_state_load_entries,
         })) {
-        std::cerr << "Could not install native music voice-state load hook.\n";
         return false;
     }
     // The knight's relative call shares a live frame with the surrounding
@@ -1497,59 +937,24 @@ namespace devils_crush::app::host {
         .physical_bank = 0x03U,
         .logical_pc = 0x73D0U,
     };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(),
-            kKnightSourceSlotLoad)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kKnightSourceSlotLoad,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.auxiliary_transcript_entries;
-                ++deployment.auxiliary_knight_source_slot_load_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.auxiliary_transcript_accepted;
-                    deployment.auxiliary_transcript_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kKnightSourceSlotLoad, 1U},
+            .label = "knight source-slot load",
+            .totals = kAuxiliaryTranscriptTotals,
+            .entries = &NativeRegistryDeployment::auxiliary_knight_source_slot_load_entries,
         })) {
-        std::cerr << "Could not install native knight source-slot load hook.\n";
         return false;
     }
     constexpr RoutineKey kKnightBsr{
         .physical_bank = 0x03U,
         .logical_pc = 0x73D3U,
     };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(), kKnightBsr)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kKnightBsr,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.auxiliary_transcript_entries;
-                ++deployment.auxiliary_knight_bsr_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.auxiliary_transcript_accepted;
-                    deployment.auxiliary_transcript_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kKnightBsr, 1U},
+            .label = "knight BSR",
+            .totals = kAuxiliaryTranscriptTotals,
+            .entries = &NativeRegistryDeployment::auxiliary_knight_bsr_entries,
         })) {
-        std::cerr << "Could not install native knight BSR hook.\n";
         return false;
     }
     // The BSR returns into a carry-sensitive branch. Its taken and
@@ -1558,29 +963,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x03U,
         .logical_pc = 0x73D5U,
     };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(), kKnightBcs)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kKnightBcs,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.auxiliary_transcript_entries;
-                ++deployment.auxiliary_knight_bcs_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.auxiliary_transcript_accepted;
-                    deployment.auxiliary_transcript_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kKnightBcs, 1U},
+            .label = "knight BCS",
+            .totals = kAuxiliaryTranscriptTotals,
+            .entries = &NativeRegistryDeployment::auxiliary_knight_bcs_entries,
         })) {
-        std::cerr << "Could not install native knight BCS hook.\n";
         return false;
     }
     // The Knight movement helper owns its state transitions, but its literal
@@ -1672,30 +1060,12 @@ namespace devils_crush::app::host {
         .physical_bank = 0x03U,
         .logical_pc = 0x76CAU,
     };
-    if (std::find(
-            claimed_routines.begin(), claimed_routines.end(),
-            kKnightCounterReturn)
-            == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kKnightCounterReturn,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment, &replacement_rom](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.auxiliary_transcript_entries;
-                ++deployment.auxiliary_knight_counter_rts_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(
-                    entry, work_ram, replacement_rom);
-                if (result) {
-                    ++deployment.auxiliary_transcript_accepted;
-                    deployment.auxiliary_transcript_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kKnightCounterReturn, 1U},
+            .label = "knight counter RTS",
+            .totals = kAuxiliaryTranscriptTotals,
+            .entries = &NativeRegistryDeployment::auxiliary_knight_counter_rts_entries,
         })) {
-        std::cerr << "Could not install native knight counter RTS hook.\n";
         return false;
     }
     // Bank 09's compact actor scan reuses the admitted bank-01 queue filer,
@@ -1761,32 +1131,14 @@ namespace devils_crush::app::host {
         {.physical_bank = 0x09U, .logical_pc = 0x6FB1U},
         {.physical_bank = 0x09U, .logical_pc = 0x70EEU},
     }};
-    for (const auto routine : kBank9ScriptedActorInitializers) {
-        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
-            != claimed_routines.end()) {
-            continue;
-        }
-        if (!runtime.install_execution_hook({
-                .routine = routine,
-                .mode = HookMode::replace,
-                .replacement_callback = [&deployment](
-                    const RoutineEntry& entry,
-                    const std::span<const std::byte> work_ram) {
-                    ++deployment.auxiliary_transcript_entries;
-                    ++deployment.auxiliary_bank9_scripted_actor_initializer_entries;
-                    deployment.span.observe(entry.absolute_master_cycle);
-                    auto result = replace_native_gameplay_routine(entry, work_ram, {});
-                    if (result) {
-                        ++deployment.auxiliary_transcript_accepted;
-                        deployment.auxiliary_transcript_master_cycles +=
-                            result->body_master_cycles;
-                    }
-                    return result;
-                },
-            })) {
-            std::cerr << "Could not install native bank-09 scripted actor initializer hook.\n";
-            return false;
-        }
+    if (!install_instruction_hooks(hooks, {
+            .routines = kBank9ScriptedActorInitializers,
+            .label = "bank-09 scripted actor initializer",
+            .totals = kAuxiliaryTranscriptTotals,
+            .entries = &NativeRegistryDeployment::auxiliary_bank9_scripted_actor_initializer_entries,
+            .reads_rom = false,
+        })) {
+        return false;
     }
     // The first scripted actor resumes after F08E at 09:7025. Its bounded
     // countdown leaves the script's RTS or the common-initializer JSR in the
@@ -1795,63 +1147,27 @@ namespace devils_crush::app::host {
         {.physical_bank = 0x09U, .logical_pc = 0x7025U},
         {.physical_bank = 0x09U, .logical_pc = 0x715DU},
     }};
-    for (const auto routine : kBank9UpperTableCountdowns) {
-        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
-                != claimed_routines.end()) {
-            continue;
-        }
-        if (!runtime.install_execution_hook({
-            .routine = routine,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.auxiliary_transcript_entries;
-                ++deployment.auxiliary_bank9_upper_table_countdown_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(entry, work_ram, {});
-                if (result) {
-                    ++deployment.auxiliary_transcript_accepted;
-                    deployment.auxiliary_transcript_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = kBank9UpperTableCountdowns,
+            .label = "bank-09 upper-table countdown",
+            .totals = kAuxiliaryTranscriptTotals,
+            .entries = &NativeRegistryDeployment::auxiliary_bank9_upper_table_countdown_entries,
+            .reads_rom = false,
         })) {
-            std::cerr << "Could not install native bank-09 upper-table countdown hook.\n";
-            return false;
-        }
+        return false;
     }
     constexpr std::array<RoutineKey, 2U> kBank9UpperTableParentDecays{{
         {.physical_bank = 0x09U, .logical_pc = 0x7043U},
         {.physical_bank = 0x09U, .logical_pc = 0x717BU},
     }};
-    for (const auto routine : kBank9UpperTableParentDecays) {
-        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
-                != claimed_routines.end()) {
-            continue;
-        }
-        if (!runtime.install_execution_hook({
-            .routine = routine,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.auxiliary_transcript_entries;
-                ++deployment.auxiliary_bank9_upper_table_parent_decay_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(entry, work_ram, {});
-                if (result) {
-                    ++deployment.auxiliary_transcript_accepted;
-                    deployment.auxiliary_transcript_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = kBank9UpperTableParentDecays,
+            .label = "bank-09 upper-table parent-decay",
+            .totals = kAuxiliaryTranscriptTotals,
+            .entries = &NativeRegistryDeployment::auxiliary_bank9_upper_table_parent_decay_entries,
+            .reads_rom = false,
         })) {
-            std::cerr << "Could not install native bank-09 upper-table parent-decay hook.\n";
-            return false;
-        }
+        return false;
     }
     // Both parent actors reset their animation counters and enter the shared
     // scheduler through a conventional JSR frame.  The replacement owns only
@@ -1860,112 +1176,52 @@ namespace devils_crush::app::host {
         {.physical_bank = 0x09U, .logical_pc = 0x704FU},
         {.physical_bank = 0x09U, .logical_pc = 0x7187U},
     }};
-    for (const auto routine : kBank9UpperTableParentInitializers) {
-        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
-                != claimed_routines.end()) {
-            continue;
-        }
-        if (!runtime.install_execution_hook({
-            .routine = routine,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.auxiliary_transcript_entries;
-                ++deployment.auxiliary_bank9_upper_table_parent_initializer_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(entry, work_ram, {});
-                if (result) {
-                    ++deployment.auxiliary_transcript_accepted;
-                    deployment.auxiliary_transcript_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = kBank9UpperTableParentInitializers,
+            .label = "bank-09 upper-table parent initializer",
+            .totals = kAuxiliaryTranscriptTotals,
+            .entries = &NativeRegistryDeployment::auxiliary_bank9_upper_table_parent_initializer_entries,
+            .reads_rom = false,
         })) {
-            std::cerr << "Could not install native bank-09 upper-table parent initializer hook.\n";
-            return false;
-        }
+        return false;
     }
     constexpr RoutineKey kBank2ActorCountdownReturn{
         .physical_bank = 0x02U,
         .logical_pc = 0x4F6CU,
     };
-    if (std::find(claimed_routines.begin(), claimed_routines.end(),
-                  kBank2ActorCountdownReturn) == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kBank2ActorCountdownReturn,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.auxiliary_transcript_entries;
-                ++deployment.auxiliary_bank2_actor_countdown_return_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(entry, work_ram, {});
-                if (result) {
-                    ++deployment.auxiliary_transcript_accepted;
-                    deployment.auxiliary_transcript_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kBank2ActorCountdownReturn, 1U},
+            .label = "bank-02 actor countdown-return",
+            .totals = kAuxiliaryTranscriptTotals,
+            .entries = &NativeRegistryDeployment::auxiliary_bank2_actor_countdown_return_entries,
+            .reads_rom = false,
         })) {
-        std::cerr << "Could not install native bank-02 actor countdown-return hook.\n";
         return false;
     }
     constexpr RoutineKey kBank3ActorIdleBranch{
         .physical_bank = 0x03U,
         .logical_pc = 0x6001U,
     };
-    if (std::find(claimed_routines.begin(), claimed_routines.end(),
-                  kBank3ActorIdleBranch) == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kBank3ActorIdleBranch,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.auxiliary_transcript_entries;
-                ++deployment.auxiliary_bank3_actor_idle_branch_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(entry, work_ram, {});
-                if (result) {
-                    ++deployment.auxiliary_transcript_accepted;
-                    deployment.auxiliary_transcript_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kBank3ActorIdleBranch, 1U},
+            .label = "bank-03 actor idle-branch",
+            .totals = kAuxiliaryTranscriptTotals,
+            .entries = &NativeRegistryDeployment::auxiliary_bank3_actor_idle_branch_entries,
+            .reads_rom = false,
         })) {
-        std::cerr << "Could not install native bank-03 actor idle-branch hook.\n";
         return false;
     }
     constexpr RoutineKey kActorQueueTerminal{
         .physical_bank = 0x01U,
         .logical_pc = 0xC63EU,
     };
-    if (std::find(claimed_routines.begin(), claimed_routines.end(),
-                  kActorQueueTerminal) == claimed_routines.end()
-        && !runtime.install_execution_hook({
-            .routine = kActorQueueTerminal,
-            .mode = HookMode::replace,
-            .replacement_callback = [&deployment](
-                const RoutineEntry& entry,
-                const std::span<const std::byte> work_ram) {
-                ++deployment.auxiliary_transcript_entries;
-                ++deployment.auxiliary_actor_queue_terminal_entries;
-                deployment.span.observe(entry.absolute_master_cycle);
-                auto result = replace_native_gameplay_routine(entry, work_ram, {});
-                if (result) {
-                    ++deployment.auxiliary_transcript_accepted;
-                    deployment.auxiliary_transcript_master_cycles +=
-                        result->body_master_cycles;
-                }
-                return result;
-            },
+    if (!install_instruction_hooks(hooks, {
+            .routines = {&kActorQueueTerminal, 1U},
+            .label = "actor queue-terminal",
+            .totals = kAuxiliaryTranscriptTotals,
+            .entries = &NativeRegistryDeployment::auxiliary_actor_queue_terminal_entries,
+            .reads_rom = false,
         })) {
-        std::cerr << "Could not install native actor queue-terminal hook.\n";
         return false;
     }
     // The longer bonus route maps a sibling scan at bank 01:C559. Its clear
@@ -1978,33 +1234,13 @@ namespace devils_crush::app::host {
         {.physical_bank = 0x01U, .logical_pc = 0xC568U},
         {.physical_bank = 0x01U, .logical_pc = 0xC56BU},
     }};
-    for (const auto routine : kBonusActorScanInstructions) {
-        if (std::find(claimed_routines.begin(), claimed_routines.end(), routine)
-            != claimed_routines.end()) {
-            continue;
-        }
-        if (!runtime.install_execution_hook({
-                .routine = routine,
-                .mode = HookMode::replace,
-                .replacement_callback = [&deployment, &replacement_rom](
-                    const RoutineEntry& entry,
-                    const std::span<const std::byte> work_ram) {
-                    ++deployment.auxiliary_transcript_entries;
-                    ++deployment.auxiliary_bonus_actor_scan_entries;
-                    deployment.span.observe(entry.absolute_master_cycle);
-                    auto result = replace_native_gameplay_routine(
-                        entry, work_ram, replacement_rom);
-                    if (result) {
-                        ++deployment.auxiliary_transcript_accepted;
-                        deployment.auxiliary_transcript_master_cycles +=
-                            result->body_master_cycles;
-                    }
-                    return result;
-                },
-            })) {
-            std::cerr << "Could not install native bonus actor-scan hook.\n";
-            return false;
-        }
+    if (!install_instruction_hooks(hooks, {
+            .routines = kBonusActorScanInstructions,
+            .label = "bonus actor-scan",
+            .totals = kAuxiliaryTranscriptTotals,
+            .entries = &NativeRegistryDeployment::auxiliary_bonus_actor_scan_entries,
+        })) {
+        return false;
     }
     return true;
 }

@@ -280,6 +280,12 @@ if(DC_BUILD_APP)
         src/app/host/command_line_validate.cpp
         src/app/host/coverage_reports.cpp
         src/app/host/deterministic_recording.cpp
+        src/app/host/gameplay_bootstrap_shadow.cpp
+        src/app/host/gameplay_bootstrap_shadow_actors.cpp
+        src/app/host/gameplay_bootstrap_shadow_report.cpp
+        src/app/host/gameplay_bootstrap_shadow_observers.cpp
+        src/app/host/gameplay_bootstrap_shadow_prediction.cpp
+        src/app/host/gameplay_bootstrap_shadow_collision.cpp
         src/app/host/high_score_autosave.cpp
         src/app/host/host_audio.cpp
         src/app/host/host_files.cpp
@@ -290,14 +296,17 @@ if(DC_BUILD_APP)
         src/app/host/interactive_session.cpp
         src/app/host/native_registry_install.cpp
         src/app/host/play_assists.cpp
+        src/app/host/proven_replace_hooks.cpp
         src/app/host/recording_inputs.cpp
         src/app/host/recording_plans.cpp
+        src/app/host/recording_session.cpp
         src/app/host/registry_reports.cpp
         src/app/host/routine_replay.cpp
         src/app/host/semantic_fixtures.cpp
         src/app/host/table_motion.cpp
         src/app/host/trace_writers.cpp
         src/app/host/windows_host.cpp
+        src/app/host/windows_host_frames.cpp
         src/app/native_replacements.cpp
         src/app/native_replacements_absorb.cpp
         src/app/native_replacements_actor_scan_preamble.cpp
