@@ -143,7 +143,18 @@ int main(int argc, char** argv)
         }
         return count;
     };
-    for (const unsigned frame : {0U, 30U, 70U, 110U, 160U, 189U}) {
+    // The game cuts from its last frame to black; the panel fades the face
+    // out and stays dark for the rest of a second.
+    const auto at_frame = [&](unsigned frame) {
+        return panel.compose(*font, &scores, (frame * 1'000U + 59U) / 60U, &*ending);
+    };
+    const auto whole = lit(at_frame(189U), 132, 20, 188, 92);
+    const auto going = lit(at_frame(210U), 132, 20, 188, 92);
+    check(going != 0U && going < whole && lit(at_frame(210U), 0, 0, 320, 112) == going,
+        "the face alone fades out after the game's last frame");
+    check(lit(at_frame(230U), 0, 0, 320, 112) == 0U && lit(at_frame(249U), 0, 0, 320, 112) == 0U,
+        "and the panel is dark before the scores");
+    for (const unsigned frame : {0U, 30U, 70U, 110U, 160U, 189U, 200U, 220U}) {
         const auto at = (frame * 1'000U + 59U) / 60U;
         const auto image = panel.compose(*font, &scores, at, &*ending);
         check(image.pixels == panel.compose(*font, &scores, at + turn, &*ending).pixels,

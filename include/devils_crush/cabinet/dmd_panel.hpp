@@ -16,9 +16,12 @@ enum class DmdScene { score, special_points, extra_ball, bonus_tally, match, bon
 
 // One turn of the attract carousel is the ending's head, when there is one to
 // show, and then the five high-score pages. The head's 190 frames are the
-// game's, at its sixty a second.
+// game's, at its sixty a second. The game cuts from the last of them to
+// black; the panel instead takes a second over it, the face going out a fade
+// step every other frame and the panel then staying dark.
+inline constexpr std::uint64_t kDmdEndingHeadTailFrames = 60U;
 inline constexpr std::uint64_t kDmdEndingHeadMilliseconds =
-    render::kEndingHeadFrames * 1'000U / 60U;
+    (render::kEndingHeadFrames + kDmdEndingHeadTailFrames) * 1'000U / 60U;
 
 // Observes cartridge state only; award timing and score changes remain owned
 // by the original rules. Result success is latched before its counter drains.

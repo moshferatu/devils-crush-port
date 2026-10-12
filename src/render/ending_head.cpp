@@ -46,9 +46,8 @@ constexpr int kHeadTileColumns = 7;
 constexpr int kHeadTileRows = 9;
 constexpr std::size_t kHeadFirstTile = 0x7C0U;
 
-// The face comes up from black in 21 steps: one at frame 2, one at frame 4
-// and one every third frame after that, so it is whole at frame 61.
-constexpr unsigned kFadeSteps = 21U;
+// The face comes up from black in its 21 steps at frame 2, at frame 4 and
+// every third frame after that, so it is whole at frame 61.
 
 // The balls are actors `$04-$07` under `07:4261` for 63 frames. Positions
 // are 16.8 and velocities 8.8, as on the table, and a ball's sprite is at
@@ -129,7 +128,7 @@ struct Sprite {
     return true;
 }
 
-// How far the fade has come at a frame, from 0, black, to kFadeSteps.
+// How far the fade has come at a frame, from 0, black, to kEndingHeadFadeSteps.
 [[nodiscard]] unsigned fade_level(const std::uint64_t frame) noexcept
 {
     if (frame < 2U) {
@@ -139,7 +138,7 @@ struct Sprite {
         return 1U;
     }
     return static_cast<unsigned>(std::min<std::uint64_t>(
-        kFadeSteps, 2U + (frame - 4U) / 3U));
+        kEndingHeadFadeSteps, 2U + (frame - 4U) / 3U));
 }
 
 // A colour that many steps short of whole. Each step takes one level off one
@@ -323,6 +322,41 @@ std::optional<EndingHeadAnimation> EndingHeadAnimation::decode(
     return animation;
 }
 
+void EndingHeadAnimation::draw_head(
+    ArgbImage& destination,
+    const unsigned level,
+    const int screen_x,
+    const int screen_y) const
+{
+    if (level == 0U || !destination.valid()
+        || head_pixels_.size()
+            != static_cast<std::size_t>(kEndingHeadWidth)
+                * static_cast<std::size_t>(kEndingHeadHeight)) {
+        return;
+    }
+    std::array<std::uint32_t, kPaletteColors> colors{};
+    for (std::size_t index = 0; index < colors.size(); ++index) {
+        colors[index] = decode_pce_color(faded_color(
+            head_palette_[index],
+            kEndingHeadFadeSteps - std::min(level, kEndingHeadFadeSteps)));
+    }
+    for (int y = 0; y < kEndingHeadHeight; ++y) {
+        for (int x = 0; x < kEndingHeadWidth; ++x) {
+            const auto pixel = head_pixels_[
+                static_cast<std::size_t>(y)
+                    * static_cast<std::size_t>(kEndingHeadWidth)
+                + static_cast<std::size_t>(x)];
+            if (pixel != 0U) {
+                put_pixel(
+                    destination,
+                    kEndingHeadScreenX + x - screen_x,
+                    kEndingHeadScreenY + y - screen_y,
+                    colors[pixel]);
+            }
+        }
+    }
+}
+
 void EndingHeadAnimation::draw(
     ArgbImage& destination,
     const std::uint64_t frame,
@@ -331,36 +365,11 @@ void EndingHeadAnimation::draw(
 {
     if (frame >= kEndingHeadFrames || !destination.valid()
         || vram_words_.size() != kVramWordCount
-        || palette_entries_.size() != kPaletteEntryCount
-        || head_pixels_.size()
-            != static_cast<std::size_t>(kEndingHeadWidth)
-                * static_cast<std::size_t>(kEndingHeadHeight)) {
+        || palette_entries_.size() != kPaletteEntryCount) {
         return;
     }
 
-    const auto level = fade_level(frame);
-    if (level != 0U) {
-        std::array<std::uint32_t, kPaletteColors> colors{};
-        for (std::size_t index = 0; index < colors.size(); ++index) {
-            colors[index] = decode_pce_color(
-                faded_color(head_palette_[index], kFadeSteps - level));
-        }
-        for (int y = 0; y < kEndingHeadHeight; ++y) {
-            for (int x = 0; x < kEndingHeadWidth; ++x) {
-                const auto pixel = head_pixels_[
-                    static_cast<std::size_t>(y)
-                        * static_cast<std::size_t>(kEndingHeadWidth)
-                    + static_cast<std::size_t>(x)];
-                if (pixel != 0U) {
-                    put_pixel(
-                        destination,
-                        kEndingHeadScreenX + x - screen_x,
-                        kEndingHeadScreenY + y - screen_y,
-                        colors[pixel]);
-                }
-            }
-        }
-    }
+    draw_head(destination, fade_level(frame), screen_x, screen_y);
 
     const PceSpriteSnapshot snapshot{
         .vram_words = vram_words_,

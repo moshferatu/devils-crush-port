@@ -204,11 +204,21 @@ render::ArgbImage DmdPanel::compose(const DmdFont& font,
             if (elapsed < kDmdEndingHeadMilliseconds) {
                 // The face in the middle of the panel, which is wider than
                 // the game's screen and not half as tall.
-                ending_head->draw(image, elapsed * 60U / 1'000U,
-                    render::kEndingHeadScreenX
-                        - (width - render::kEndingHeadWidth) / 2,
-                    render::kEndingHeadScreenY
-                        - (height - render::kEndingHeadHeight) / 2);
+                const auto frame = elapsed * 60U / 1'000U;
+                const int left = render::kEndingHeadScreenX
+                    - (width - render::kEndingHeadWidth) / 2;
+                const int top = render::kEndingHeadScreenY
+                    - (height - render::kEndingHeadHeight) / 2;
+                if (frame < render::kEndingHeadFrames) {
+                    ending_head->draw(image, frame, left, top);
+                } else {
+                    const auto gone = (frame - render::kEndingHeadFrames) / 2U + 1U;
+                    if (gone < render::kEndingHeadFadeSteps) {
+                        ending_head->draw_head(image,
+                            render::kEndingHeadFadeSteps - static_cast<unsigned>(gone),
+                            left, top);
+                    }
+                }
                 return image;
             }
             elapsed -= kDmdEndingHeadMilliseconds;

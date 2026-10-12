@@ -1066,7 +1066,11 @@ Face fades in alone, four balls close on the jewel of its helmet and six
 bursts go off over it, and then the screen is cleared for the scene that
 follows. `render::EndingHeadAnimation` draws those 190 frames from the ROM
 with no emulator behind it, and the DMD shows them at the game's own size
-with the face in the middle of the panel and nothing else on it. The panel is
+with the face in the middle of the panel and nothing else on it. The game
+cuts from the last of them straight to black, which on the panel would be a
+cut to the scores, so the panel adds a second of its own: the face goes out
+by the same fade played forwards, a step every other frame, and the panel
+stays dark for the third of a second left. The panel is
 wider than the game's screen, whose edges are not applied: the ball from the
 left is on the panel from its first frame, as the one from the right is on
 the game's screen.

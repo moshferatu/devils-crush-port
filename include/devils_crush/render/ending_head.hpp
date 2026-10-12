@@ -18,6 +18,8 @@ namespace devils_crush::render {
 // the next one: the Giant Face fades in alone, four balls close on the jewel
 // of its helmet, and six bursts go off over it.
 inline constexpr std::uint64_t kEndingHeadFrames = 190U;
+// The face comes up from black in this many steps.
+inline constexpr unsigned kEndingHeadFadeSteps = 21U;
 // Where the face stands on the game's 256-pixel-wide screen.
 inline constexpr int kEndingHeadScreenX = 88;
 inline constexpr int kEndingHeadScreenY = 64;
@@ -41,6 +43,15 @@ public:
     void draw(
         ArgbImage& destination,
         std::uint64_t frame,
+        int screen_x,
+        int screen_y) const;
+
+    // The face alone, `level` of the fade's steps up from black. The game
+    // only ever fades it in; this is for a host that wants it to leave the
+    // way it came.
+    void draw_head(
+        ArgbImage& destination,
+        unsigned level,
         int screen_x,
         int screen_y) const;
 
