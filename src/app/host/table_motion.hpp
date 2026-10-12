@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Included by main.cpp after the host's source-texture helpers.
+#pragma once
+
+#include "host_common.hpp"
+#include "host_textures.hpp"
+
+namespace devils_crush::app::host {
 
 struct TableMotionLayer {
     devils_crush::render::TableMotionFrame frame;
@@ -411,3 +416,9 @@ struct TablePresentationSample {
         reported = true;
     }
 };
+
+void update_bonus_room_motion(SDL_Renderer* renderer, PceRuntime& runtime,
+    const std::optional<devils_crush::cabinet::CabinetState>& state,
+    const FramebufferView& view, ViewportMotionPresenter& motion);
+
+} // namespace devils_crush::app::host

@@ -1,5 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Included by main.cpp alongside the renderer diagnostic entry points.
+#include "artwork_blend_checks.hpp"
+
+#include "host_present.hpp"
+#include "host_textures.hpp"
+#include "play_assists.hpp"
+#include "table_motion.hpp"
+
+namespace devils_crush::app::host {
+
 [[nodiscard]] bool check_playfield_rotation()
 {
     auto* surface = SDL_CreateSurface(120, 80, SDL_PIXELFORMAT_ARGB8888);
@@ -299,3 +307,5 @@
     destroy_source(target);
     return ok && restored;
 }
+
+} // namespace devils_crush::app::host

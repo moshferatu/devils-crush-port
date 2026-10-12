@@ -385,11 +385,12 @@ bool is_monitor(int id) { return id == S_MONITOR_PLAYFIELD || id == S_MONITOR_DM
 
 // --- monitors ----------------------------------------------------------------
 //
-// Named and measured as the game names and measures them (`src/app/main.cpp`,
-// `enumerate_host_displays`), so that the monitor chosen here is the one
-// `resolve_display` finds when the game opens the window. A monitor is known by
-// its name; two with the same name are told apart by where the window is,
-// which is why choosing one also moves the window onto it.
+// Named and measured as the game names and measures them
+// (`src/app/host/host_windows.cpp`, `enumerate_host_displays`), so that the
+// monitor chosen here is the one `resolve_display` finds when the game opens
+// the window. A monitor is known by its name; two with the same name are told
+// apart by where the window is, which is why choosing one also moves the
+// window onto it.
 
 struct Monitors {
     std::vector<devils_crush::cabinet::DisplayDescriptor> list;

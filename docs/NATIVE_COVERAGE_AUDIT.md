@@ -45,7 +45,7 @@ prediction of actual ownership coverage or host execution speed.
 
 ## What the counters actually count
 
-1. `main.cpp`, `NativeCycleSpan`, measures between first and last observed
+1. `native_registry_install.hpp`, `NativeCycleSpan`, measures between first and last observed
    registry/capability entries, not a common start/end boundary for all counters.
    The native numerator sums requested `body_master_cycles` immediately when
    the host callback returns a result. It does not measure completed work in

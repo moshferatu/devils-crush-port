@@ -274,7 +274,7 @@ status an interrupt stacks when it lands on that boundary.
 
 Both now reproduce the assembly census, call trace and write trace
 exactly, and their regressions assert the baseline. The hold-back
-mechanism stays in `kWithheldRoutines` in `src/app/main.cpp` for the next
+mechanism stays in `kWithheldRoutines` in `src/app/host/native_registry_install.hpp` for the next
 routine that needs it; the list is empty and every run says so.
 
 ## Cycle budget
@@ -1819,7 +1819,7 @@ it does not belong in the same distribution as the other eight.
 **It also found a flaw in this document's own headline.** The registry line
 moved `+1,651,296`, which is more than the 1,640,100 the ported instructions
 cost. The census adds a transcript's declared `body_master_cycles` when the
-replacement is *offered* (`src/app/main.cpp`), before the core discovers that
+replacement is *offered* (`src/app/host/native_registry_install.cpp`), before the core discovers that
 an interrupt will truncate it, so a truncated transcript is credited with
 work it did not do. Halving the chunk budget — 196 chunks instead of
 101, same route, same byte-identical state census — *lowers* the total by

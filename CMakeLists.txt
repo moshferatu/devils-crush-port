@@ -268,6 +268,36 @@ if(DC_BUILD_APP)
     add_executable(
         devils_crush
         src/app/main.cpp
+        src/app/host/artwork_blend_checks.cpp
+        src/app/host/cabinet_table.cpp
+        src/app/host/census_writers.cpp
+        src/app/host/checks_cabinet.cpp
+        src/app/host/checks_flippers.cpp
+        src/app/host/checks_launch.cpp
+        src/app/host/checks_oracle.cpp
+        src/app/host/command_line_parse.cpp
+        src/app/host/command_line_usage.cpp
+        src/app/host/command_line_validate.cpp
+        src/app/host/coverage_reports.cpp
+        src/app/host/deterministic_recording.cpp
+        src/app/host/high_score_autosave.cpp
+        src/app/host/host_audio.cpp
+        src/app/host/host_files.cpp
+        src/app/host/host_input.cpp
+        src/app/host/host_present.cpp
+        src/app/host/host_textures.cpp
+        src/app/host/host_windows.cpp
+        src/app/host/interactive_session.cpp
+        src/app/host/native_registry_install.cpp
+        src/app/host/play_assists.cpp
+        src/app/host/recording_inputs.cpp
+        src/app/host/recording_plans.cpp
+        src/app/host/registry_reports.cpp
+        src/app/host/routine_replay.cpp
+        src/app/host/semantic_fixtures.cpp
+        src/app/host/table_motion.cpp
+        src/app/host/trace_writers.cpp
+        src/app/host/windows_host.cpp
         src/app/native_replacements.cpp
         src/app/native_replacements_absorb.cpp
         src/app/native_replacements_actor_scan_preamble.cpp

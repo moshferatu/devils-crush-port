@@ -3777,7 +3777,7 @@ a state it was not proven against, so those calls run the original assembly.
 ### Withheld routines
 
 Admission is necessary but not sufficient. A routine belongs in
-`kWithheldRoutines` in `src/app/main.cpp` when it passes an `@all` regression
+`kWithheldRoutines` in `src/app/host/native_registry_install.hpp` when it passes an `@all` regression
 but deploying it alone moves the state census off the assembly-only baseline,
 *and* its own regression expects the moved hash rather than the baseline. Its
 evidence then locks the divergence in instead of catching it, so the list holds
