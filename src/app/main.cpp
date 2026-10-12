@@ -7,6 +7,7 @@
 #include "devils_crush/cabinet/display_config.hpp"
 #include "devils_crush/cabinet/dmd_layout.hpp"
 #include "devils_crush/cabinet/dmd_panel.hpp"
+#include "devils_crush/cabinet/dragon_heads.hpp"
 #include "devils_crush/cabinet/music_transition.hpp"
 #include "devils_crush/core/atomic_file.hpp"
 #include "devils_crush/core/data_files.hpp"
@@ -20069,6 +20070,17 @@ void release_dragged_ball(devils_crush::emulation::PceRuntime& runtime)
     }
 }
 
+// The cabinet's one change to what the game shows: bonus stage 1's dragon
+// heads fade in already facing the ball, where the game has them face right
+// until the fade is over and then snap round.
+void face_waiting_dragon_heads(devils_crush::emulation::PceRuntime& runtime)
+{
+    auto work_ram = runtime.export_work_ram();
+    if (devils_crush::cabinet::face_waiting_dragon_heads(work_ram)) {
+        static_cast<void>(runtime.import_work_ram(work_ram));
+    }
+}
+
 // The ball-dragging cheat's frame: the ball is taken to the pointer, held
 // inside the picture. Nothing is written, and false returned, unless there is
 // a ball in play.
@@ -21679,6 +21691,11 @@ int run_windows_host(
                     runtime, bonus_stage_return_pending)) {
                 host_ok = false;
                 break;
+            }
+            // Not in a session being captured, which is replayed as the
+            // cartridge alone plays it.
+            if (cabinet_mode && !capture_session && !presentation_check) {
+                face_waiting_dragon_heads(runtime);
             }
             if (native_gameplay_bootstrap_shadow) {
                 gameplay_bootstrap_shadow.observe(

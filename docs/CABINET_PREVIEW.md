@@ -151,6 +151,35 @@ settings, DMD and backglass for 1,920 scripted game frames. It switches smoothin
 on/off/on and reports the measured cadence of each segment. Display settings
 are read but are not saved by this bounded diagnostic.
 
+## Bonus stage 1's dragon heads
+
+This is the one place the cabinet shows something the game does not. The
+stage's five heads are type-`$C2` actors (slots `$34`, `$35`, `$50`-`$52`)
+whose routine at `04:47D5` turns each to face the ball every frame:
+`01:DAF8` gives the direction from the head to the ball as one of sixteen,
+and half of it picks the pose from the eight at `04:482E`. The layout leaves
+them in pose 0, facing right, and the stage's sprites are built once, on its
+second frame, and stand while it fades in. The routine first runs a second
+later, on the frame the fade ends, so the game's heads fade in facing right
+and snap round to the ball.
+
+In cabinet mode the heads fade in already facing the ball.
+`cabinet::face_waiting_dragon_heads`
+(`include/devils_crush/cabinet/dragon_heads.hpp`) runs after every frame and
+gives each head the pose its routine would. A head still being set up, the
+frame before the sprites are built, is faced at (62, 200): the ball is only
+taken there, to the actor that serves it, on the frame after (`04:513E`).
+Once the routine is running the rule is the routine's own and changes
+nothing. It is left off while a session is being captured, which is replayed
+as the cartridge alone plays it.
+
+Only the five pose bytes are written. `dc_rom_dragon_heads` runs the stage's
+entry both ways for 1,100 frames: the heads wait in the pose the game gives
+them at the end of the fade, the picture is the game's from that frame on,
+and no byte the game keeps differs in any frame. Building different sprites
+takes a different time, so scratch bytes of the zero page and dead bytes of
+the stack page do differ at a frame's end.
+
 ## Playfield switching
 
 Frontend screens use the emulated 256-by-240 framebuffer at corrected 4:3

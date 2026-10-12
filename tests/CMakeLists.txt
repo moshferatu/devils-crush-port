@@ -67,6 +67,11 @@ target_link_libraries(dc_dmd_panel_tests PRIVATE DevilsCrush::Core DevilsCrush::
 target_compile_features(dc_dmd_panel_tests PRIVATE cxx_std_20)
 dc_enable_strict_warnings(dc_dmd_panel_tests)
 
+add_executable(dc_dragon_heads_tests dragon_heads_tests.cpp)
+target_link_libraries(dc_dragon_heads_tests PRIVATE DevilsCrush::Core DevilsCrush::Emulation)
+target_compile_features(dc_dragon_heads_tests PRIVATE cxx_std_20)
+dc_enable_strict_warnings(dc_dragon_heads_tests)
+
 add_executable(dc_music_overlay_tests music_overlay_tests.cpp)
 target_link_libraries(dc_music_overlay_tests PRIVATE DevilsCrush::Core DevilsCrush::Emulation)
 target_compile_features(dc_music_overlay_tests PRIVATE cxx_std_20)
@@ -833,6 +838,8 @@ if(TARGET devils_crush)
             COMMAND dc_dmd_panel_tests "${DC_ROM_PATH}"
         )
         set_tests_properties(dc_rom_dmd_panel PROPERTIES LABELS rom_required)
+        add_test(NAME dc_rom_dragon_heads COMMAND dc_dragon_heads_tests "${DC_ROM_PATH}")
+        set_tests_properties(dc_rom_dragon_heads PROPERTIES LABELS rom_required)
         add_test(NAME dc_rom_music_overlay COMMAND dc_music_overlay_tests "${DC_ROM_PATH}")
         set_tests_properties(dc_rom_music_overlay PROPERTIES LABELS rom_required)
         add_test(
