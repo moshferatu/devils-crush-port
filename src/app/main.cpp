@@ -30,6 +30,7 @@
 #include "devils_crush/render/pce_sprite_overlay.hpp"
 #include "devils_crush/render/table_palette_cache.hpp"
 #include "devils_crush/render/sharp_pixel_scaler.hpp"
+#include "devils_crush/render/ending_head.hpp"
 #include "devils_crush/render/title_logo.hpp"
 #include "devils_crush/render/viewport_motion.hpp"
 
@@ -20787,6 +20788,11 @@ int run_windows_host(
             << "Original DMD font decode failed; disabling DMD.\n";
         destroy_auxiliary_window(dmd);
     }
+    // Only the DMD's attract carousel draws it, and it turns without.
+    const auto dmd_ending_head =
+        cabinet_rom
+        ? devils_crush::render::EndingHeadAnimation::decode(*cabinet_rom)
+        : std::nullopt;
     if (cabinet_mode && !backglass_logo) {
         std::cerr
             << "Native title-logo decode failed; the backglass will "
@@ -20907,7 +20913,8 @@ int run_windows_host(
     const auto frame_period = std::chrono::duration_cast<Clock::duration>(
         std::chrono::duration<double>(1.0 / kEmulationFramesPerSecond));
     auto next_frame_time = Clock::now();
-    const auto dmd_high_score_epoch = Clock::now();
+    auto dmd_high_score_epoch = Clock::now();
+    bool dmd_carousel_up = true;
 
     bool running = true;
     bool host_ok = true;
@@ -21912,6 +21919,14 @@ int run_windows_host(
                 }
             }
         }
+        // A turn of the carousel begins when the carousel comes up, so what
+        // follows a session is the ending's head and then the pages.
+        const bool dmd_carousel =
+            dmd_panel.attract() && !dmd_panel.name_entry();
+        if (dmd_carousel && !dmd_carousel_up) {
+            dmd_high_score_epoch = Clock::now();
+        }
+        dmd_carousel_up = dmd_carousel;
         const auto dmd_high_score_elapsed =
             std::chrono::duration_cast<std::chrono::milliseconds>(
                 Clock::now() - dmd_high_score_epoch)
@@ -21924,7 +21939,8 @@ int run_windows_host(
                     : present_dmd_panel(dmd,
                         dmd_panel.compose(*dmd_font,
                             high_scores.table_seen ? &high_scores.last : nullptr,
-                            static_cast<std::uint64_t>(dmd_high_score_elapsed)),
+                            static_cast<std::uint64_t>(dmd_high_score_elapsed),
+                            dmd_ending_head ? &*dmd_ending_head : nullptr),
                         dmd_source, dmd_stage))) {
             destroy_stage(dmd_stage);
             destroy_source(dmd_source);

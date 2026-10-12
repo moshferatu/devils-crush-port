@@ -4,6 +4,7 @@
 #include "devils_crush/cabinet/cabinet_state.hpp"
 #include "devils_crush/cabinet/dmd_font.hpp"
 #include "devils_crush/core/high_score_table.hpp"
+#include "devils_crush/render/ending_head.hpp"
 #include "devils_crush/render/pce_background.hpp"
 
 #include <cstddef>
@@ -12,6 +13,12 @@
 namespace devils_crush::cabinet {
 
 enum class DmdScene { score, special_points, extra_ball, bonus_tally, match, bonus_result };
+
+// One turn of the attract carousel is the ending's head, when there is one to
+// show, and then the five high-score pages. The head's 190 frames are the
+// game's, at its sixty a second.
+inline constexpr std::uint64_t kDmdEndingHeadMilliseconds =
+    render::kEndingHeadFrames * 1'000U / 60U;
 
 // Observes cartridge state only; award timing and score changes remain owned
 // by the original rules. Result success is latched before its counter drains.
@@ -38,9 +45,12 @@ public:
     // While the name entry page is up: the three letters as it shows them.
     [[nodiscard]] bool name_entry() const noexcept { return name_entry_; }
     [[nodiscard]] const std::string& entry_name() const noexcept { return entry_name_; }
+    // `elapsed_milliseconds` is how long the attract carousel has been
+    // turning. It opens on `ending_head`, alone on the panel, when given one.
     [[nodiscard]] render::ArgbImage compose(
         const DmdFont& font, const core::HighScoreTable* high_scores,
-        std::uint64_t elapsed_milliseconds) const;
+        std::uint64_t elapsed_milliseconds,
+        const render::EndingHeadAnimation* ending_head = nullptr) const;
 
 private:
     CabinetState state_{};

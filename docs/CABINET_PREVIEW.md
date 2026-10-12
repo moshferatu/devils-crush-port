@@ -1045,15 +1045,57 @@ score. Numbers use the original digit artwork without comma separators.
 The live page shows SCORE above a large value, with smaller BONUS and BALL
 fields beneath it.
 
-At the title, during demos, and on the high-score screen, the DMD cycles
-through the five persisted high scores every three seconds. Pages show
-Grand Champion or High Score #1 through #4, initials, and the new digits.
-The carousel resumes when the game returns to those screens after a session.
+At the title, during demos, and on the high-score screen, the DMD turns a
+carousel: the head from the game's ending, and then the five persisted high
+scores for three seconds each. Pages show Grand Champion or High Score #1
+through #4, initials, and the new digits. A turn begins when the carousel
+comes up, at startup and when the game returns to those screens after a
+session and any name entry, so the head always comes before the scores.
 Attract presentation persists through the cartridge's six-frame RAM clear
 between Best Five and the title. Only a non-demo table or bonus session with
 balls remaining switches the DMD to live play. This prevents a false GAME OVER
 flash during the attract loop while preserving real game-over presentation
-after a live session. The carousel clock continues across these transitions.
+after a live session.
+
+### The ending's head
+
+The head is the opening of the maximum-score ending. Score saturation raises
+`$2CC0` bit 7 (`00:F5A9`); the session loop takes `01:C195`, the table blows
+up, and screen `$2054=5` comes up black. Over the next 190 frames the Giant
+Face fades in alone, four balls close on the jewel of its helmet and six
+bursts go off over it, and then the screen is cleared for the scene that
+follows. `render::EndingHeadAnimation` draws those 190 frames from the ROM
+with no emulator behind it, and the DMD shows them at the game's own size
+with the face in the middle of the panel and nothing else on it. The panel is
+wider than the game's screen, whose edges are not applied: the ball from the
+left is on the panel from its first frame, as the one from the right is on
+the game's screen.
+
+The ending loads no patterns. The face is the table's own, resident pack 0
+(asset `$1222`, at VRAM `$7C00`): seven tiles by nine at screen (88, 64), tile
+`$7C0 + 7 * row + column`, less its corners. Everything else on the table's
+map is still there and is black because only background palette 1 is lit.
+The balls and bursts are in the table's sprite set, the stream at `0D:862D`
+(VRAM `$3800`). The three palettes are together at `07:4B49`: the face's, and
+sprite palettes 0 and 14.
+
+The face fades in over 21 steps, at frames 2 and 4 and every third frame to
+61. A step short of whole takes one level off one channel of each colour, in
+the order blue, green, red, passing over a channel with none left; the fade
+plays that backwards. The balls are actors `$04-$07` under `07:4261` and are
+on screen from frame 79: 63 frames of flight, straight along one axis at 2
+or 1.5 pixels a frame and bowed along the other, where they start at two
+pixels a frame and lose a sixteenth each frame. They turn through patterns
+`$1E0-$1E6` four frames apiece, meet at the jewel, and shrink there through
+`$228`, `$22A` and `$232` (`07:428E`). From frame 151 six type-`$8F` bursts
+(`07:49F4`) run nine patterns each, the first two a frame ahead of the other
+four, and the last is gone at frame 187. A sprite written in one frame is
+shown in the next, which is why these are one later than the frame work RAM
+has them.
+
+None of it is random or reads the session. `dc_rom_dmd_panel` drives the
+cartridge into its ending and compares all 190 frames with the emulator's
+framebuffer, pixel for pixel at the VCE's three bits a channel.
 
 When a game over's score ranks, the DMD shows the name entry instead: the
 rank, the three letters with the one under the cursor blinking and

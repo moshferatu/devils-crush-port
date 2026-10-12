@@ -150,6 +150,7 @@ add_library(
       src/native_runtime/tower_scheduler.cpp
       src/core/rom_image.cpp
     src/core/save_state.cpp
+    src/render/ending_head.cpp
     src/render/pce_background.cpp
     src/render/pce_sprite_overlay.cpp
     src/render/sharp_pixel_scaler.cpp

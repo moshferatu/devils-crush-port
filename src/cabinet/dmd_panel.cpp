@@ -175,7 +175,8 @@ bool DmdPanel::attract() const noexcept
 }
 
 render::ArgbImage DmdPanel::compose(const DmdFont& font,
-    const core::HighScoreTable* high_scores, const std::uint64_t elapsed) const
+    const core::HighScoreTable* high_scores, std::uint64_t elapsed,
+    const render::EndingHeadAnimation* const ending_head) const
 {
     render::ArgbImage image{width, height,
         std::vector<std::uint32_t>(width * height, 0xFF000000U)};
@@ -197,6 +198,21 @@ render::ArgbImage DmdPanel::compose(const DmdFont& font,
         return image;
     }
     if (attract()) {
+        if (ending_head) {
+            elapsed %= kDmdEndingHeadMilliseconds
+                + kDmdHighScoreDurationMilliseconds * core::kHighScoreRankCount;
+            if (elapsed < kDmdEndingHeadMilliseconds) {
+                // The face in the middle of the panel, which is wider than
+                // the game's screen and not half as tall.
+                ending_head->draw(image, elapsed * 60U / 1'000U,
+                    render::kEndingHeadScreenX
+                        - (width - render::kEndingHeadWidth) / 2,
+                    render::kEndingHeadScreenY
+                        - (height - render::kEndingHeadHeight) / 2);
+                return image;
+            }
+            elapsed -= kDmdEndingHeadMilliseconds;
+        }
         if (high_scores) {
             const auto rank = dmd_high_score_rank(elapsed);
             label(image, font, rank == 0U ? "GRAND CHAMPION"
