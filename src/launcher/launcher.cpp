@@ -274,23 +274,16 @@ constexpr std::array<const char*, kPadButtonCount> pad_names = {
 void build_rows()
 {
     add(TAB_GAME, Row{K_PATH, S_ROM, "ROM File",
-        "The HuCard image, a .pce file: the USA release, which is the one the port supports. A path "
-        "that is not absolute is taken from the launcher's folder. Browse, type it after Enter, or "
-        "drop the file on this window."});
+        "The original game ROM file."});
     add_choice(TAB_GAME, S_CABINET, "Mode", cabinet_choices, count_of(cabinet_choices),
-        "Cabinet: the playfield, the DMD and the backglass, each in a window of its own, for a "
-        "virtual pinball cabinet. Desktop: the game in one window.");
+        "How the game is displayed, in 3 separate windows or a single one.");
     add_range(TAB_MISC, S_BONUS_STAGE, "Starting Bonus Stage", 0, 6, 1, false,
-        "Off starts on the table. A stage from 1 to 6 starts a new session there, through the "
-        "game's own bonus transition.");
+        "Whether to start the game on a bonus stage.");
     add_choice(TAB_MISC, S_DRAG_BALL, "Drag Ball With Mouse", on_off, 2,
-        "A cheat for testing the table. On: the mouse pointer shows over the game, and holding the "
-        "left button on the playfield carries the ball there. Let go while moving to throw it.");
+        "Allows the player to drag the ball with the mouse, for testing purposes.");
 
     add_choice(TAB_VIDEO, S_SMOOTHING, "Smoothing", on_off, 2,
-        "On: a picture for every refresh of a fast display, the table's motion and artwork eased "
-        "between the game's sixty a second. Off: the game's frames only. F6 changes it while "
-        "playing, and a cabinet remembers.");
+        "Whether to enable smoothing for the game's visuals on higher refresh rates.");
     static const char cabinet_only[] =
         "For the cabinet's windows; a desktop window ignores it.";
     static const char monitor_help[] =
