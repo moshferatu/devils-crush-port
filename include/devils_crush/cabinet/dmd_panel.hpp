@@ -45,6 +45,8 @@ public:
     [[nodiscard]] DmdScene scene() const noexcept { return scene_; }
     [[nodiscard]] bool holds_playfield() const noexcept;
     [[nodiscard]] bool attract() const noexcept;
+    // The ball number the score page shows.
+    [[nodiscard]] unsigned ball() const noexcept { return last_ball_; }
     // While the name entry page is up: the three letters as it shows them.
     [[nodiscard]] bool name_entry() const noexcept { return name_entry_; }
     [[nodiscard]] const std::string& entry_name() const noexcept { return entry_name_; }
@@ -87,6 +89,8 @@ private:
     std::uint64_t award_ = 0;
     unsigned targets_ = 0;
     unsigned multiplier_ = 1;
+    static constexpr unsigned kStartingBalls = 3U;
+    unsigned fewest_balls_left_ = kStartingBalls;
     unsigned last_ball_ = 1;
 };
 

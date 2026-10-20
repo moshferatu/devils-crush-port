@@ -81,7 +81,6 @@ void DmdPanel::observe(const std::span<const std::byte> ram)
     const auto decoded = decode_cabinet_state(ram);
     if (!decoded) return;
     state_ = *decoded;
-    if (state_.current_ball != 0U) last_ball_ = state_.current_ball;
     const auto byte = [&ram](std::size_t offset) {
         return std::to_integer<unsigned>(ram[offset]);
     };
@@ -90,6 +89,17 @@ void DmdPanel::observe(const std::span<const std::byte> ram)
             | (byte(offset + 1U) << 8U) | (byte(offset + 2U) << 16U)) * 100U;
     };
     demo_ = byte(0x254U) != 0U;
+    // `$2D52` counts the balls left, the one in play included, and an extra
+    // ball adds one to it. Like a pinball machine, the DMD does not count an
+    // extra ball as a new ball: the number follows the fewest balls left so
+    // far, so a drain moves it on only once the extra balls are used up. A
+    // game over or a demo game starts the count again.
+    if (state_.balls_in_session == 0U || demo_) {
+        fewest_balls_left_ = kStartingBalls;
+    } else {
+        fewest_balls_left_ = std::min<unsigned>(fewest_balls_left_, state_.balls_in_session);
+        last_ball_ = kStartingBalls + 1U - fewest_balls_left_;
+    }
     if (name_entry_) {
         if (state_.screen_selector == 4U) {
             name_entry_screen_seen_ = true;

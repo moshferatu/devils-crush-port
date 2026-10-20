@@ -12146,6 +12146,36 @@ void test_dmd_attract_transition()
     check(panel.attract(), "live game high scores also return cleanly to title");
 }
 
+void test_dmd_extra_ball_keeps_ball_number()
+{
+    using devils_crush::cabinet::DmdPanel;
+    DmdPanel panel;
+    std::array<std::byte, 8192> ram{};
+    const auto balls_left = [&](unsigned count) {
+        ram[0xD52] = static_cast<std::byte>(count);
+        panel.observe(ram);
+    };
+    balls_left(3U);
+    check(panel.ball() == 1U, "a game starts on ball 1");
+    balls_left(2U);
+    check(panel.ball() == 2U, "a drain moves on to ball 2");
+    balls_left(3U);
+    check(panel.ball() == 2U, "an extra ball does not take the number back");
+    balls_left(2U);
+    check(panel.ball() == 2U, "the extra ball is played as ball 2 again");
+    balls_left(4U);
+    balls_left(3U);
+    check(panel.ball() == 2U, "two extra balls hold ball 2 through a drain");
+    balls_left(2U);
+    check(panel.ball() == 2U, "and through the second drain");
+    balls_left(1U);
+    check(panel.ball() == 3U, "the next drain moves on to ball 3");
+    balls_left(0U);
+    check(panel.ball() == 3U, "game over keeps the last ball shown");
+    balls_left(3U);
+    check(panel.ball() == 1U, "a new game starts on ball 1 again");
+}
+
 void test_dmd_name_entry()
 {
     using devils_crush::cabinet::DmdPanel;
@@ -22741,6 +22771,7 @@ int main()
     test_text_tile_write();
     test_dmd_text_layout();
     test_dmd_attract_transition();
+    test_dmd_extra_ball_keeps_ball_number();
     test_dmd_name_entry();
     test_table_motion();
     test_table_swing();
