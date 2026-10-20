@@ -273,10 +273,9 @@ constexpr std::array<const char*, kPadButtonCount> pad_names = {
 
 void build_rows()
 {
-    add(TAB_GAME, Row{K_PATH, S_ROM, "ROM File",
-        "The original game ROM file."});
+    add(TAB_GAME, Row{K_PATH, S_ROM, "ROM File", "The original game ROM file."});
     add_choice(TAB_GAME, S_CABINET, "Mode", cabinet_choices, count_of(cabinet_choices),
-        "How the game is displayed, in 3 separate windows or a single one.");
+        "How the game should be displayed, either in multiple windows or a single one.");
     add_range(TAB_MISC, S_BONUS_STAGE, "Starting Bonus Stage", 0, 6, 1, false,
         "Whether to start the game on a bonus stage.");
     add_choice(TAB_MISC, S_DRAG_BALL, "Drag Ball With Mouse", on_off, 2,
