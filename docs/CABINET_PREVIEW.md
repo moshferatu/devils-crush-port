@@ -370,8 +370,10 @@ high-score entry instead of scrolling one.
 
 ### Rewriting the flipper masks
 
-The host therefore rewrites `$3B80,X` for the six flipper pieces each frame
-from `input.left_flipper` and `input.right_flipper`. This is the surgical
+The host therefore rewrites `$3B80,X` for the six flipper pieces each frame:
+the left flipper to d-pad left, the right to d-pad right or up. These are
+fixed; earlier builds read them from `input.left_flipper` and
+`input.right_flipper`, which are now ignored. This is the surgical
 place to do it: filtering the input instead would have to go through `$2CEE`,
 which the scheduler shares with every other actor that reads held input, and
 would take the directions away from the menus too.
@@ -472,7 +474,7 @@ operand with no per-actor mask to rewrite the way the flippers have. A key
 therefore cannot launch and also avoid accepting unless the host looks at
 where the ball is.
 
-`input.launch` names keys that send button I, and only button I, while `$53`
+The keys bound to button I send button I, and only button I, while `$53`
 bit 3 marks the Devil Shooter session and $2254 is zero (live gameplay).
 The attract demo sets $2254 to one and also runs the shooter, so its launch
 flag must not suppress Return: Run dismisses the demo through 01:C2AF-C2B5.
@@ -480,15 +482,11 @@ That bit marks the shooter session and
 nothing else, which `--cabinet-nudge-probe` established while tracing the
 nudge gate. Suppressing the key's ordinary pad input is the point rather than
 a side effect: a launch button that also sent Run would pause the game at the
-moment it was pressed.
+moment it was pressed. Earlier builds kept a separate `input.launch` list;
+it is now ignored.
 
-```ini
-input.launch=Return
-```
-
-Return launches from the shooter and still starts, pauses and confirms
-everywhere else. The flipper buttons launch nothing. An empty list disables
-the override entirely.
+Return, bound to I and Run, launches from the shooter and still starts,
+pauses and confirms everywhere else. The flipper buttons launch nothing.
 
 `--cabinet-launch-check` holds one key through a launch and reports what the
 ball did:
@@ -506,13 +504,6 @@ the key continuously from before the ball is seated did not launch even with
 the charge counter well past `$18`. Pressing once the ball is in the shooter
 does. That is cartridge behaviour — `$2018` is an edge latch — and not
 something the override introduces.
-
-An empty list leaves the cartridge's own mask untouched:
-
-```ini
-input.left_flipper=
-input.right_flipper=
-```
 
 `--cabinet-flipper-trace` measures all of this. It reports what the scheduler
 copied to `$2CEE`, which is the byte `01:D466` masks against:
@@ -837,9 +828,6 @@ input.up=Up
 input.right=Right,Right Shift
 input.down=Down
 input.left=Left Shift,Left
-input.left_flipper=left
-input.right_flipper=right,up
-input.launch=Return
 input.smoothing=F6
 input.next_window=F10
 input.fullscreen=F11
@@ -852,8 +840,7 @@ input.plunger.deadzone=8
 input.plunger.release=25
 ```
 
-The two `_flipper` lines name pad inputs rather than keys, from the same set
-as the `input.` suffixes above. The `plunger.` lines are a controller rather
+The `plunger.` lines are a controller rather
 than a keyboard and are described under [The plunger](#the-plunger).
 
 Names are SDL scancode names, matched case-insensitively, so the host can

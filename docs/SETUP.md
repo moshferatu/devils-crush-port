@@ -15,7 +15,7 @@ and starts the game, then comes back when the game closes.
 | Video | Smoothing, and for the cabinet: the playfield rotation, and which monitor each window is on and whether it is fullscreen |
 | Audio | The music voice overlay |
 | Cabinet | The nudge board and nudge strength, and the analog plunger |
-| Keyboard | The keys for each PC Engine pad input, the launch keys, and each flipper's pad inputs |
+| Keyboard | The keys for each PC Engine pad input, and the window hotkeys |
 | Misc. | A starting bonus stage, and dragging the ball with the mouse |
 
 It is worked by mouse, keyboard or controller: Up and Down move, Left and
@@ -90,9 +90,9 @@ others, and it is not available with `--capture-session`.
 | F10 / Shift+F10 | Select the next / previous cabinet window (cabinet mode) |
 | F11 | Toggle borderless fullscreen for the selected window (the playfield outside cabinet mode) |
 | F12 / Shift+F12 | Move the selected window to the next / previous connected monitor (cabinet mode) |
+| Escape | Quit |
 
 F6, F10, F11 and F12 can be rebound on the launcher's Keyboard tab.
-| Escape | Quit |
 
 The flag `--emulate-only` can be used to execute the original assembly instead, should that be necessary.
 
@@ -106,9 +106,9 @@ The flag `--emulate-only` can be used to execute the original assembly instead, 
 | Space | Nudge |
 
 The first available SDL gamepad works too, and extra mappings can be supplied
-in `gamecontrollerdb.txt`. Keys are rebindable under `input.` in
-`devils-crush.ini`, and which pad inputs work each flipper is
-configurable as well — see
+in `gamecontrollerdb.txt`. Keys are rebindable on the launcher's Keyboard tab or under `input.` in
+`devils-crush.ini`. The flippers are the pad's Left and Right, and the keys
+bound to I launch from the shooter — see
 [docs/CABINET_PREVIEW.md](CABINET_PREVIEW.md#controls) for the full
 mapping.
 

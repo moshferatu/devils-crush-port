@@ -170,7 +170,7 @@ int run_deterministic_recording(
     }
     const auto initial_frame_number = runtime.serialize().frame_number;
     const auto interactive_flippers =
-        devils_crush::cabinet::default_input_bindings().flippers;
+        devils_crush::cabinet::flipper_inputs();
     if (plan.restore_interactive_flipper_host
         && !install_shooter_flipper_gate(runtime, interactive_flippers)) {
         std::cerr << "Could not restore the interactive flipper gate for "

@@ -211,24 +211,6 @@ void append_bindings(std::string& output, const InputBindings& input)
         }
         output += '\n';
     }
-    const auto append_flipper = [&output](
-                                    const std::string_view key,
-                                    const std::vector<PadButton>& inputs) {
-        output += "input.";
-        output += key;
-        output += '=';
-        bool first = true;
-        for (const auto input : inputs) {
-            if (!std::exchange(first, false)) {
-                output += ',';
-            }
-            output += pad_button_field(input);
-        }
-        output += '\n';
-    };
-    append_flipper("left_flipper", input.flippers.left);
-    append_flipper("right_flipper", input.flippers.right);
-
     const auto append_keys = [&output](
                                  const std::string_view key,
                                  const std::vector<std::string>& keys) {
@@ -244,7 +226,6 @@ void append_bindings(std::string& output, const InputBindings& input)
         }
         output += '\n';
     };
-    append_keys("launch", input.launch_keys);
     append_keys("smoothing", input.smoothing_keys);
     append_keys("next_window", input.next_window_keys);
     append_keys("fullscreen", input.fullscreen_keys);
@@ -280,18 +261,6 @@ void append_bindings(std::string& output, const InputBindings& input)
     output += std::to_string(
         static_cast<unsigned>(plunger.calibration.release));
     output += '\n';
-}
-
-[[nodiscard]] std::optional<PadButton> pad_button_from_field(
-    const std::string_view name) noexcept
-{
-    for (std::size_t index = 0; index < kPadButtonCount; ++index) {
-        const auto button = static_cast<PadButton>(index);
-        if (pad_button_field(button) == name) {
-            return button;
-        }
-    }
-    return std::nullopt;
 }
 
 [[nodiscard]] std::string_view trim(std::string_view text) noexcept
@@ -366,45 +335,7 @@ void append_bindings(std::string& output, const InputBindings& input)
         }
         input[button] = std::move(*parsed);
     }
-    const auto parse_flipper =
-        [&fields](
-            const std::string_view key,
-            std::vector<PadButton>& inputs) {
-            std::string field("input.");
-            field += key;
-            const auto found = fields.find(field);
-            if (found == fields.end()) {
-                return true;
-            }
-            std::vector<PadButton> parsed;
-            const std::string_view text(found->second);
-            std::size_t start = 0;
-            while (start <= text.size()) {
-                const auto separator = text.find(',', start);
-                const auto piece = trim(text.substr(
-                    start,
-                    separator == std::string_view::npos
-                        ? std::string_view::npos
-                        : separator - start));
-                if (!piece.empty()) {
-                    const auto button = pad_button_from_field(piece);
-                    if (!button) {
-                        return false;
-                    }
-                    if (std::ranges::find(parsed, *button) == parsed.end()) {
-                        parsed.push_back(*button);
-                    }
-                }
-                if (separator == std::string_view::npos) {
-                    break;
-                }
-                start = separator + 1U;
-            }
-            inputs = std::move(parsed);
-            return true;
-        };
     const std::pair<std::string_view, std::vector<std::string>*> key_lists[]{
-        {"input.launch", &input.launch_keys},
         {"input.smoothing", &input.smoothing_keys},
         {"input.next_window", &input.next_window_keys},
         {"input.fullscreen", &input.fullscreen_keys},
@@ -483,9 +414,7 @@ void append_bindings(std::string& output, const InputBindings& input)
         return parse_integer(trim(found->second), value);
     };
 
-    return parse_flipper("left_flipper", input.flippers.left)
-        && parse_flipper("right_flipper", input.flippers.right)
-        && parse_axis_value("axis", input.plunger.axis)
+    return parse_axis_value("axis", input.plunger.axis)
         && parse_axis_value("rest", input.plunger.calibration.rest)
         && parse_axis_value("drawn", input.plunger.calibration.drawn)
         && parse_percent("deadzone", input.plunger.calibration.deadzone)
@@ -705,6 +634,15 @@ InputBindings default_input_bindings()
     bindings[PadButton::down] = {"Down"};
     bindings[PadButton::left] = {"Left Shift", "Left"};
 
+    bindings.smoothing_keys = {"F6"};
+    bindings.next_window_keys = {"F10"};
+    bindings.fullscreen_keys = {"F11"};
+    bindings.next_monitor_keys = {"F12"};
+    return bindings;
+}
+
+const FlipperInputs& flipper_inputs()
+{
     // The left flipper drops the cartridge's up/right/down, so Right and the
     // menu directions stop working it. The right flipper gains d-pad right
     // alongside button I, so Right works it while still arriving as a
@@ -720,19 +658,11 @@ InputBindings default_input_bindings()
     // the host somewhere to move this flipper for exactly those frames. Up is
     // never sent on its own by any flipper key; it is only ever the stand-in
     // for right while left is also held.
-    bindings.flippers.left = {PadButton::left};
-    bindings.flippers.right = {PadButton::right, PadButton::up};
-
-    // Return is the cabinet's launch button. Listing it here makes it send
-    // button I alone while the ball is in the shooter, so it launches instead
-    // of pausing, and leaves it starting and pausing everywhere else.
-    bindings.launch_keys = {"Return"};
-
-    bindings.smoothing_keys = {"F6"};
-    bindings.next_window_keys = {"F10"};
-    bindings.fullscreen_keys = {"F11"};
-    bindings.next_monitor_keys = {"F12"};
-    return bindings;
+    static const FlipperInputs inputs{
+        .left = {PadButton::left},
+        .right = {PadButton::right, PadButton::up},
+    };
+    return inputs;
 }
 
 std::vector<std::byte> encode_display_config(const DisplayConfig& config)

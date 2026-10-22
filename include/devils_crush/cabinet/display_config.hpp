@@ -137,11 +137,8 @@ inline constexpr std::uint8_t kCartridgeRightFlipperMask = 0x01U;
 // with no keys is unbound; that is distinct from the field being absent,
 // which takes the default.
 struct InputBindings {
-    std::array<std::vector<std::string>, kPadButtonCount> keys;
-    FlipperInputs flippers;
-
-    // Keys that send button I, and only button I, while the ball is sitting
-    // in the Devil Shooter.
+    // The keys bound to button I also launch: while the ball is sitting in
+    // the Devil Shooter they send button I and nothing else.
     //
     // Launching is button I, and so is accepting a letter during high-score
     // entry -- the Devil Shooter reads it at `02:5159` as
@@ -150,10 +147,10 @@ struct InputBindings {
     // host looks at where the ball is. Session flag `$53` bit 3 marks the
     // shooter session and nothing else, which makes it exactly the condition.
     //
-    // A launch key's ordinary pad input is suppressed while it applies, so
-    // binding one that normally sends Run pauses the game everywhere except
-    // the one screen where it should launch instead.
-    std::vector<std::string> launch_keys;
+    // Their other pad inputs are suppressed while it applies, so a key bound
+    // to I and Run pauses the game everywhere except the one screen where it
+    // should launch instead.
+    std::array<std::vector<std::string>, kPadButtonCount> keys;
 
     // The game's own keys, outside the pad: smoothing, choosing the cabinet
     // window the next two act on (Shift goes back), that window's fullscreen,
@@ -188,8 +185,7 @@ struct InputBindings {
     [[nodiscard]] bool operator==(const InputBindings&) const = default;
 };
 
-// The `input.` suffix each pad input is stored under. Also the name used in
-// the `left_flipper`/`right_flipper` lists.
+// The `input.` suffix each pad input is stored under.
 [[nodiscard]] std::string_view pad_button_field(PadButton button) noexcept;
 
 // The `$2CEE` bit a pad input arrives as, which is also its bit in the
@@ -229,6 +225,11 @@ struct InputBindings {
 // layout still works, and D-pad right has no default key because Right now
 // belongs to the right flipper.
 [[nodiscard]] InputBindings default_input_bindings();
+
+// The pad inputs each flipper answers to during play: d-pad left for the
+// left flipper, d-pad right for the right with up as its stand-in while both
+// are held. Fixed, so a flipper is whatever keys Left and Right are bound to.
+[[nodiscard]] const FlipperInputs& flipper_inputs();
 
 // The settings a player chooses once rather than per run: each was a
 // command-line flag first, and the flag still beats the file. The launcher

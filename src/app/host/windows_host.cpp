@@ -402,7 +402,7 @@ void HostSession::install_game_hooks()
     // would be reported as the collision it is rather than silently winning.
     if (host_ok
         && !install_shooter_flipper_gate(
-            runtime, cabinet_config.input.flippers)) {
+            runtime, devils_crush::cabinet::flipper_inputs())) {
         std::cerr << "Could not free the flippers during the launch.\n";
         running = false;
         host_ok = false;

@@ -167,7 +167,9 @@ struct ProbedAxis {
                 bindings[binding.pad],
                 devils_crush::cabinet::pad_button_field(binding.pad));
     }
-    resolved.launch = resolve_key_names(bindings.launch_keys, "launch");
+    resolved.launch =
+        resolved.pads[static_cast<std::size_t>(
+            devils_crush::cabinet::PadButton::one)];
     resolved.smoothing =
         resolve_key_names(bindings.smoothing_keys, "smoothing");
     resolved.next_window =
@@ -206,9 +208,10 @@ void resolve_opposing_directions(
     InputFrame input;
     const bool* keys = SDL_GetKeyboardState(nullptr);
 
-    // While the ball is in the shooter a launch key means launch and nothing
-    // else. Suppressing its ordinary pad input is the point: a launch button
-    // that also sends Run would pause the game at the moment it is pressed.
+    // While the ball is in the shooter a key bound to I means launch and
+    // nothing else. Suppressing its other pad inputs is the point: a launch
+    // key that also sends Run would pause the game at the moment it is
+    // pressed.
     const bool launching = ball_in_launcher
         && std::ranges::any_of(
                bindings.launch,

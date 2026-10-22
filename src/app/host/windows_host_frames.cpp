@@ -315,7 +315,7 @@ void HostSession::run_due_frames(
             keep_fixed_actors_simulating(runtime);
         }
         const bool ball_in_launcher = apply_flipper_inputs(
-            runtime, cabinet_config.input.flippers);
+            runtime, devils_crush::cabinet::flipper_inputs());
         const auto rod =
             read_plunger(plunger, cabinet_config.input.plunger);
         // Whether the shooter took the write is the gate, rather than
@@ -333,7 +333,7 @@ void HostSession::run_due_frames(
             gamepad,
             key_bindings,
             ball_in_launcher,
-            cabinet_config.input.flippers,
+            devils_crush::cabinet::flipper_inputs(),
             rod_engaged && !rod.released);
         if (presentation_check)
             input = state_census_input_for_frame(emulated_frames + 1);

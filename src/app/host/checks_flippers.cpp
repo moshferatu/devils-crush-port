@@ -378,7 +378,7 @@ struct DraggedBallSeen {
     // than a second implementation of it. The probe leaves `$3B80,X` as the
     // cartridge wrote it, so the cartridge masks are what gets restored.
     const auto flippers =
-        devils_crush::cabinet::default_input_bindings().flippers;
+        devils_crush::cabinet::flipper_inputs();
     if (restore_input
         && !install_shooter_flipper_gate(runtime, flippers)) {
         std::cerr << "Could not install the shooter input-gate hook.\n";
@@ -670,7 +670,7 @@ void report_nudge_effect(
                 // the host's substitution too.
                 resolve_opposing_directions(
                     replay_input.player_one,
-                    devils_crush::cabinet::default_input_bindings().flippers);
+                    devils_crush::cabinet::flipper_inputs());
             }
         }
         if (uncull) {
@@ -679,7 +679,7 @@ void report_nudge_effect(
             // flipper masks.
             static_cast<void>(apply_flipper_inputs(
                 runtime,
-                devils_crush::cabinet::default_input_bindings().flippers));
+                devils_crush::cabinet::flipper_inputs()));
         }
         static_cast<void>(runtime.run_frame(replay_input));
         const auto work_ram = runtime.export_work_ram();

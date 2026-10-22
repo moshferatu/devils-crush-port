@@ -8947,11 +8947,11 @@ void test_cabinet_display_config()
         // Right drives two pad inputs at once, which is only safe because the
         // left flipper no longer answers to d-pad right.
         check(
-            defaults.flippers.left
+            devils_crush::cabinet::flipper_inputs().left
                 == std::vector<PadButton>{PadButton::left},
             "only d-pad left works the left flipper by default");
         check(
-            defaults.flippers.right
+            devils_crush::cabinet::flipper_inputs().right
                 == std::vector<PadButton>{PadButton::right, PadButton::up},
             "the right flipper accepts d-pad right and a non-opposing "
             "stand-in");
@@ -8976,28 +8976,28 @@ void test_cabinet_display_config()
             "only left-with-right and up-with-down are impossible");
 
         const auto both = resolve_opposing_directions(
-            static_cast<std::uint8_t>(kLeft | kRight), defaults.flippers);
+            static_cast<std::uint8_t>(kLeft | kRight), devils_crush::cabinet::flipper_inputs());
         check(
             !has_opposing_directions(both) && (both & kLeft) != 0U,
             "holding both flipper buttons yields a byte the pad can express");
         check(
             (both
              & devils_crush::cabinet::flipper_input_mask(
-                 defaults.flippers.right))
+                 devils_crush::cabinet::flipper_inputs().right))
                 != 0U,
             "and it still opens the right flipper's gate");
         check(
             (both
              & devils_crush::cabinet::flipper_input_mask(
-                 defaults.flippers.left))
+                 devils_crush::cabinet::flipper_inputs().left))
                 != 0U,
             "and the left flipper's gate as well");
 
         // Pressed alone, each flipper button keeps its natural direction --
         // that is what the menus and high-score entry see.
         check(
-            resolve_opposing_directions(kRight, defaults.flippers) == kRight
-                && resolve_opposing_directions(kLeft, defaults.flippers)
+            resolve_opposing_directions(kRight, devils_crush::cabinet::flipper_inputs()) == kRight
+                && resolve_opposing_directions(kLeft, devils_crush::cabinet::flipper_inputs())
                     == kLeft,
             "a single flipper press is passed through untouched");
 
@@ -9015,11 +9015,11 @@ void test_cabinet_display_config()
 
         // The masks those lists come to are the bytes written to $3B80,X.
         check(
-            devils_crush::cabinet::flipper_input_mask(defaults.flippers.left)
+            devils_crush::cabinet::flipper_input_mask(devils_crush::cabinet::flipper_inputs().left)
                 == 0x80U,
             "the left flipper mask is d-pad left alone");
         check(
-            devils_crush::cabinet::flipper_input_mask(defaults.flippers.right)
+            devils_crush::cabinet::flipper_input_mask(devils_crush::cabinet::flipper_inputs().right)
                 == 0x30U,
             "the right flipper mask is d-pad right plus its stand-in");
         check(
@@ -9059,13 +9059,6 @@ void test_cabinet_display_config()
                 0x30U),
             "a re-initialized piece is rewritten again");
 
-        auto authentic = source;
-        authentic.input.flippers = {};
-        const auto authentic_decoded =
-            decode_display_config(encode_display_config(authentic));
-        check(
-            authentic_decoded && *authentic_decoded == authentic,
-            "empty flipper lists round trip");
 
 
         // Names with spaces have to survive the escaping the format applies
@@ -9214,55 +9207,20 @@ void test_cabinet_display_config()
                     == std::vector<std::string>{"Space", "Return"},
             "surrounding whitespace is trimmed from bound key names");
 
-        // Flipper input lists name pad inputs, not keys.
-        auto flippers = legacy;
-        flippers += "input.left_flipper=left,down\n";
-        const auto flippers_decoded = decode_display_config(to_bytes(flippers));
+        // The flippers are Left and Right, and the keys bound to I launch:
+        // the separate settings earlier builds wrote are ignored.
+        auto old_inputs = legacy;
+        old_inputs += "input.left_flipper=left,down\ninput.launch=Space\n";
+        const auto old_inputs_decoded = decode_display_config(to_bytes(old_inputs));
         check(
-            flippers_decoded
-                && flippers_decoded->input.flippers.left
-                    == std::vector<PadButton>{PadButton::left, PadButton::down}
-                && flippers_decoded->input.flippers.right
-                    == defaults.flippers.right,
-            "a flipper input list is parsed and the other keeps its default");
-
-        auto bad_flipper = legacy;
-        bad_flipper += "input.left_flipper=sideways\n";
+            old_inputs_decoded && old_inputs_decoded->input == defaults,
+            "the old flipper and launch settings are ignored");
         check(
-            !decode_display_config(to_bytes(bad_flipper)),
-            "an unknown pad input in a flipper list is rejected");
-
-        // Launch keys send button I only while the ball is in the shooter,
-        // which is what lets Right launch without accepting a high-score
-        // letter and lets Return launch without pausing.
-        check(
-            defaults.launch_keys == std::vector<std::string>{"Return"},
-            "only Return launches from the shooter");
-        check(
-            std::ranges::find(defaults.launch_keys, "Right")
-                == defaults.launch_keys.end(),
-            "Right no longer launches");
-        check(
-            std::ranges::find(defaults[PadButton::run], "Return")
-                != defaults[PadButton::run].end(),
-            "Return still sends Run everywhere else");
-
-        auto launch = legacy;
-        launch += "input.launch=Space\n";
-        const auto launch_decoded = decode_display_config(to_bytes(launch));
-        check(
-            launch_decoded
-                && launch_decoded->input.launch_keys
-                    == std::vector<std::string>{"Space"},
-            "launch keys are configurable");
-
-        auto no_launch = legacy;
-        no_launch += "input.launch=\n";
-        const auto no_launch_decoded =
-            decode_display_config(to_bytes(no_launch));
-        check(
-            no_launch_decoded && no_launch_decoded->input.launch_keys.empty(),
-            "an empty launch list disables the shooter override");
+            std::ranges::find(defaults[PadButton::one], "Return")
+                    != defaults[PadButton::one].end()
+                && std::ranges::find(defaults[PadButton::run], "Return")
+                    != defaults[PadButton::run].end(),
+            "Return launches as I and still sends Run everywhere else");
 
         // The game's own keys, shared with the Alien Crush port's file.
         check(
@@ -9298,7 +9256,7 @@ void test_cabinet_display_config()
                 "the window keys survive a write and a read");
             const std::string text(
                 reinterpret_cast<const char*>(encoded.data()), encoded.size());
-            const auto launch_at = text.find("\ninput.launch=");
+            const auto launch_at = text.find("\ninput.left=");
             const auto smoothing_at = text.find("\ninput.smoothing=F7\n");
             const auto window_at = text.find("\ninput.next_window=Tab,F10\n");
             const auto fullscreen_at = text.find("\ninput.fullscreen=\n");
@@ -9309,7 +9267,7 @@ void test_cabinet_display_config()
                     && smoothing_at < window_at && window_at < fullscreen_at
                     && fullscreen_at < monitor_at
                     && monitor_at != std::string::npos,
-                "the window keys are written in order right after input.launch");
+                "the window keys are written in order right after the pad's");
         }
 
         check(defaults.nudge == devils_crush::input::NudgeBinding{},
