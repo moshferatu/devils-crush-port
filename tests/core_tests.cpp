@@ -8415,7 +8415,9 @@ void test_nudge()
     check(scale_nudge_motion(32760, 100, 16) == 32767, "positive motion saturates");
     check(scale_nudge_motion(0x8008, 0xFF9C, 16) == 0x8000, "negative motion saturates");
     check(scale_nudge_motion(0x8008, 100, 0) == 32676, "recover wrapped original addition");
-    const NudgeBinding binding;
+    check(!NudgeBinding{}.enabled, "physical nudge is off until enabled");
+    NudgeBinding binding;
+    binding.enabled = true;
     Nudge nudge;
     check(!nudge.read(binding, 20000, 0, 0, true), "nudge starts disarmed");
     check(!nudge.read(binding, 0, 0, 10, true), "nudge waits for quiet");
@@ -8932,7 +8934,7 @@ void test_cabinet_display_config()
         // behave identically everywhere -- including scrolling a letter.
         check(
             defaults[PadButton::right]
-                == std::vector<std::string>{"Right", "Right Shift"},
+                == std::vector<std::string>{"Right Shift", "Right"},
             "Right and Right Shift both reach the flipper as a direction");
 
         // No key that works a flipper may also confirm.
@@ -9271,7 +9273,7 @@ void test_cabinet_display_config()
         }
 
         check(defaults.nudge == devils_crush::input::NudgeBinding{},
-              "legacy settings receive the Alien Crush PinOne nudge defaults");
+              "legacy settings receive the Alien Crush nudge defaults");
         const auto nudging = decode_display_config(to_bytes(legacy +
             "input.nudge.device=Custom Board\ninput.nudge.enabled=0\n"
             "input.nudge.axis_x=3\ninput.nudge.axis_y=4\n"

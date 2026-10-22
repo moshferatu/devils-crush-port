@@ -453,7 +453,7 @@ sends*, which is what makes the rest fit together:
 | Key | Pad input | In the shooter | In play | Elsewhere |
 | --- | --- | --- | --- | --- |
 | Left Shift, Left | d-pad left | — | Left flipper | A direction — scrolls |
-| Right, Right Shift | d-pad right | — | Right flipper | A direction — scrolls |
+| Right Shift, Right | d-pad right | — | Right flipper | A direction — scrolls |
 | Enter | button I + run | **Launch** | Pause | Start, pause, confirm |
 | Space | button II | — | Nudge | — |
 | Up, Down | d-pad up/down | — | — | Menu navigation |
@@ -527,8 +527,9 @@ narrowed and the right one moved from button I to a direction.
 
 ### PinOne accelerometer nudging
 
-Cabinet mode automatically opens a joystick whose name contains `PinOne`
-(case-insensitive) and turns X/Y accelerometer motion into the original button-II
+Physical nudging is off by default. Turn on Nudge Board in the launcher (or set
+`input.nudge.enabled=1`) and cabinet mode opens a joystick whose name contains
+`PinOne` (case-insensitive) and turns X/Y accelerometer motion into the original button-II
 nudge. This uses the same settings and debounce as Alien Crush:
 
 ```ini
@@ -825,7 +826,7 @@ input.two=Space
 input.select=Backspace
 input.run=Return
 input.up=Up
-input.right=Right,Right Shift
+input.right=Right Shift,Right
 input.down=Down
 input.left=Left Shift,Left
 input.smoothing=F6

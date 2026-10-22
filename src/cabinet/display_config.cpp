@@ -630,7 +630,7 @@ InputBindings default_input_bindings()
     // Both right-hand flipper keys. They reach the flipper through the right
     // pieces' rewritten mask rather than through button I, so on screens that
     // are not play they arrive as a direction and scroll rather than confirm.
-    bindings[PadButton::right] = {"Right", "Right Shift"};
+    bindings[PadButton::right] = {"Right Shift", "Right"};
     bindings[PadButton::down] = {"Down"};
     bindings[PadButton::left] = {"Left Shift", "Left"};
 

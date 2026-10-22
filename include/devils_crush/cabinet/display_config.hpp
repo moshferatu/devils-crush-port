@@ -220,10 +220,10 @@ struct InputBindings {
     std::uint8_t pad,
     const FlipperInputs& flippers) noexcept;
 
-// Left Shift and Left work the left flipper; Right Shift and Right work the
-// right flipper and launch. Z and X stay bound so the original keyboard
-// layout still works, and D-pad right has no default key because Right now
-// belongs to the right flipper.
+// Left Shift and Left work the left flipper; Right Shift and Right the right;
+// Return confirms, starts and pauses, and launches from the shooter; Space
+// nudges; Backspace is Select; Up and Down move through menus. The same
+// defaults as the Alien Crush port.
 [[nodiscard]] InputBindings default_input_bindings();
 
 // The pad inputs each flipper answers to during play: d-pad left for the

@@ -40,7 +40,8 @@ inline std::uint16_t scale_nudge_motion(std::uint16_t motion,
 }
 
 struct NudgeBinding {
-    bool enabled = true;
+    // Off until the player turns it on: most players have no nudge board.
+    bool enabled = false;
     std::string device = "PinOne";
     int axis_x = 0;
     int axis_y = 1;
