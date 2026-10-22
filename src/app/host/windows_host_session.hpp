@@ -75,6 +75,9 @@ struct HostSession {
     FrameArtworkPresenter frame_artwork;
     ViewportMotionPresenter viewport_motion;
     bool smoothing_enabled = false;
+    // The cabinet window the fullscreen and next-monitor keys act on: 0 the
+    // playfield, 1 the DMD, 2 the backglass. Nothing on screen shows it.
+    int selected_window = 0;
     bool motion_ready = false;
     std::optional<bool> reported_smoothing;
     TablePresentationSample presentation_sample;
@@ -88,8 +91,6 @@ struct HostSession {
     std::optional<std::vector<std::byte>> drag_rom;
     PresentedPicture playfield_picture;
     std::uint64_t backglass_logo_frame = 0U;
-    bool assignment_active = false;
-    AssignmentRole assignment_role = AssignmentRole::playfield;
 
     // Pacing.
     Clock::duration frame_period{};
@@ -135,6 +136,8 @@ struct HostSession {
     void present_cabinet_displays();
     // Writes the window placements back, in a cabinet run that keeps them.
     void save_current_cabinet_config();
+    // The selected window, or the playfield once the selected one has closed.
+    [[nodiscard]] SDL_Window* selected_cabinet_window() const noexcept;
 };
 
 } // namespace devils_crush::app::host

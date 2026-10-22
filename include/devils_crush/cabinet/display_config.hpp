@@ -155,6 +155,16 @@ struct InputBindings {
     // the one screen where it should launch instead.
     std::vector<std::string> launch_keys;
 
+    // The game's own keys, outside the pad: smoothing, choosing the cabinet
+    // window the next two act on (Shift goes back), that window's fullscreen,
+    // and moving it to the next monitor (Shift: the previous one). Stored as
+    // `input.smoothing`, `input.next_window`, `input.fullscreen` and
+    // `input.next_monitor`, the same keys as the Alien Crush port.
+    std::vector<std::string> smoothing_keys;
+    std::vector<std::string> next_window_keys;
+    std::vector<std::string> fullscreen_keys;
+    std::vector<std::string> next_monitor_keys;
+
     // The analog plunger, if the cabinet has one. A drawn plunger does what a
     // launch key does and more: it holds button I while the rod is back, and
     // it also puts the Devil Shooter's own piece where the rod is, so the

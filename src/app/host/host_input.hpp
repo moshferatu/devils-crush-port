@@ -13,7 +13,15 @@ struct ResolvedKeyBindings {
         devils_crush::cabinet::kPadButtonCount>
         pads;
     std::vector<SDL_Scancode> launch;
+    std::vector<SDL_Scancode> smoothing;
+    std::vector<SDL_Scancode> next_window;
+    std::vector<SDL_Scancode> fullscreen;
+    std::vector<SDL_Scancode> next_monitor;
 };
+
+[[nodiscard]] bool key_is_bound(
+    const std::vector<SDL_Scancode>& keys,
+    SDL_Scancode scancode) noexcept;
 
 [[nodiscard]] ResolvedKeyBindings resolve_key_bindings(
     const devils_crush::cabinet::InputBindings& bindings);

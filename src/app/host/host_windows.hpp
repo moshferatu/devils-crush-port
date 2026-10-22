@@ -67,47 +67,25 @@ struct StartupFocusClaim {
 
 void claim_startup_focus(SDL_Window* const window, StartupFocusClaim& claim);
 
-enum class AssignmentRole {
-    playfield,
-    dmd,
-    backglass,
-};
+// Whether another of the cabinet's windows fills `display`. SDL fills a
+// monitor with one window: making a second fullscreen there minimizes the
+// first, and a minimized playfield loses the keyboard.
+[[nodiscard]] bool fullscreen_beside(
+    SDL_Window* const window,
+    const SDL_DisplayID display,
+    std::span<SDL_Window* const> cabinet_windows) noexcept;
 
-[[nodiscard]] SDL_Window* assignment_window(
-    const AssignmentRole role,
-    SDL_Window* const playfield,
-    AuxiliaryWindow& dmd,
-    AuxiliaryWindow& backglass) noexcept;
-
-[[nodiscard]] devils_crush::cabinet::WindowPlacement&
-assignment_placement(
-    const AssignmentRole role,
-    devils_crush::cabinet::DisplayConfig& config) noexcept;
+// Moves a window to the next display (direction 1) or the previous one (-1),
+// centred at its own size, and keeps it fullscreen if it was. A fullscreen
+// window passes over a display another cabinet window fills.
+[[nodiscard]] bool move_to_next_display(
+    SDL_Window* const window,
+    const int direction,
+    const HostDisplays& displays,
+    std::span<SDL_Window* const> cabinet_windows);
 
 [[nodiscard]] std::string playfield_title(
     const bool cabinet_mode, const bool native_code);
-
-void set_assignment_titles(
-    SDL_Window* const playfield,
-    const std::string& playfield_name,
-    AuxiliaryWindow& dmd,
-    AuxiliaryWindow& backglass,
-    const bool active,
-    const AssignmentRole selected);
-
-[[nodiscard]] bool cycle_assignment_display(
-    const AssignmentRole role,
-    const int direction,
-    SDL_Window* const playfield,
-    AuxiliaryWindow& dmd,
-    AuxiliaryWindow& backglass,
-    devils_crush::cabinet::DisplayConfig& config,
-    const HostDisplays& displays);
-
-[[nodiscard]] bool present_assignment(
-    SDL_Renderer* const renderer,
-    const AssignmentRole role,
-    const bool selected);
 
 [[nodiscard]] bool present_black(AuxiliaryWindow& output);
 

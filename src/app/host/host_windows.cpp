@@ -27,20 +27,6 @@ namespace {
     }
 }
 
-[[nodiscard]] std::pair<int, int> assignment_default_size(
-    const AssignmentRole role) noexcept
-{
-    switch (role) {
-    case AssignmentRole::playfield:
-        return {720, 1280};
-    case AssignmentRole::dmd:
-        return {960, 240};
-    case AssignmentRole::backglass:
-        return {960, 540};
-    }
-    return {640, 480};
-}
-
 } // namespace
 
 [[nodiscard]] HostDisplays enumerate_host_displays()
@@ -264,37 +250,87 @@ void claim_startup_focus(SDL_Window* const window, StartupFocusClaim& claim)
     }
 }
 
-[[nodiscard]] SDL_Window* assignment_window(
-    const AssignmentRole role,
-    SDL_Window* const playfield,
-    AuxiliaryWindow& dmd,
-    AuxiliaryWindow& backglass) noexcept
+[[nodiscard]] bool fullscreen_beside(
+    SDL_Window* const window,
+    const SDL_DisplayID display,
+    std::span<SDL_Window* const> cabinet_windows) noexcept
 {
-    switch (role) {
-    case AssignmentRole::playfield:
-        return playfield;
-    case AssignmentRole::dmd:
-        return dmd.window;
-    case AssignmentRole::backglass:
-        return backglass.window;
+    for (SDL_Window* const other : cabinet_windows) {
+        if (other != nullptr && other != window
+            && (SDL_GetWindowFlags(other) & SDL_WINDOW_FULLSCREEN) != 0U
+            && SDL_GetDisplayForWindow(other) == display) {
+            return true;
+        }
     }
-    return nullptr;
+    return false;
 }
 
-[[nodiscard]] devils_crush::cabinet::WindowPlacement&
-assignment_placement(
-    const AssignmentRole role,
-    devils_crush::cabinet::DisplayConfig& config) noexcept
+[[nodiscard]] bool move_to_next_display(
+    SDL_Window* const window,
+    const int direction,
+    const HostDisplays& displays,
+    std::span<SDL_Window* const> cabinet_windows)
 {
-    switch (role) {
-    case AssignmentRole::playfield:
-        return config.playfield;
-    case AssignmentRole::dmd:
-        return config.dmd;
-    case AssignmentRole::backglass:
-        return config.backglass;
+    const auto count = static_cast<std::int64_t>(displays.ids.size());
+    if (window == nullptr || count < 2) {
+        return true;
     }
-    return config.playfield;
+    const auto current_id = SDL_GetDisplayForWindow(window);
+    std::int64_t current = 0;
+    for (std::int64_t index = 0; index < count; ++index) {
+        if (displays.ids[static_cast<std::size_t>(index)] == current_id) {
+            current = index;
+            break;
+        }
+    }
+    const bool was_fullscreen =
+        (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0U;
+    SDL_DisplayID target_id = 0U;
+    for (std::int64_t step = 1; step < count && target_id == 0U; ++step) {
+        const auto candidate = displays.ids[static_cast<std::size_t>(
+            ((current + direction * step) % count + count) % count)];
+        if (!was_fullscreen
+            || !fullscreen_beside(window, candidate, cabinet_windows)) {
+            target_id = candidate;
+        }
+    }
+    if (target_id == 0U) {
+        return true;
+    }
+    SDL_Rect bounds{};
+    if (!SDL_GetDisplayUsableBounds(target_id, &bounds)
+        && !SDL_GetDisplayBounds(target_id, &bounds)) {
+        return report_sdl_error("Reading the next display's bounds failed");
+    }
+    // Leave fullscreen before changing the windowed placement, and wait for
+    // the platform to finish so the next request uses the new display.
+    const bool fullscreen =
+        (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0U;
+    if (fullscreen
+        && (!SDL_SetWindowFullscreen(window, false)
+            || !SDL_SyncWindow(window))) {
+        return report_sdl_error("Leaving fullscreen to move a window failed");
+    }
+    int width = 0;
+    int height = 0;
+    if (!SDL_GetWindowSize(window, &width, &height)) {
+        return report_sdl_error("Reading a window's size failed");
+    }
+    width = std::min(width, bounds.w);
+    height = std::min(height, bounds.h);
+    if (!SDL_SetWindowSize(window, width, height)
+        || !SDL_SetWindowPosition(
+            window,
+            bounds.x + (bounds.w - width) / 2,
+            bounds.y + (bounds.h - height) / 2)
+        || !SDL_SyncWindow(window)) {
+        return report_sdl_error("Moving a window to the next display failed");
+    }
+    if (fullscreen && !SDL_SetWindowFullscreen(window, true)) {
+        return report_sdl_error("Restoring fullscreen after a move failed");
+    }
+    (void)SDL_RaiseWindow(window);
+    return true;
 }
 
 // Names the game code actually running, so the emulated original is never
@@ -309,178 +345,6 @@ assignment_placement(
         title += cabinet_mode ? " (Emulated Original)" : " - Emulated Original";
     }
     return title;
-}
-
-void set_assignment_titles(
-    SDL_Window* const playfield,
-    const std::string& playfield_name,
-    AuxiliaryWindow& dmd,
-    AuxiliaryWindow& backglass,
-    const bool active,
-    const AssignmentRole selected)
-{
-    if (!active) {
-        (void)SDL_SetWindowTitle(playfield, playfield_name.c_str());
-        if (dmd.window != nullptr) {
-            (void)SDL_SetWindowTitle(
-                dmd.window,
-                "Devil's Crush - Cabinet DMD");
-        }
-        if (backglass.window != nullptr) {
-            (void)SDL_SetWindowTitle(
-                backglass.window,
-                "Devil's Crush - Cabinet Backglass");
-        }
-        return;
-    }
-    const auto title = [selected](
-                           const AssignmentRole role,
-                           const char* const name) {
-        std::string value = role == selected ? "[SELECTED] " : "";
-        value += name;
-        value +=
-            " - 1/2/3 select, arrows display, F fullscreen, Enter done";
-        return value;
-    };
-    const auto playfield_title =
-        title(AssignmentRole::playfield, "Cabinet setup: Playfield");
-    (void)SDL_SetWindowTitle(playfield, playfield_title.c_str());
-    if (dmd.window != nullptr) {
-        const auto dmd_title =
-            title(AssignmentRole::dmd, "Cabinet setup: DMD");
-        (void)SDL_SetWindowTitle(dmd.window, dmd_title.c_str());
-    }
-    if (backglass.window != nullptr) {
-        const auto backglass_title =
-            title(AssignmentRole::backglass, "Cabinet setup: Backglass");
-        (void)SDL_SetWindowTitle(
-            backglass.window,
-            backglass_title.c_str());
-    }
-}
-
-[[nodiscard]] bool cycle_assignment_display(
-    const AssignmentRole role,
-    const int direction,
-    SDL_Window* const playfield,
-    AuxiliaryWindow& dmd,
-    AuxiliaryWindow& backglass,
-    devils_crush::cabinet::DisplayConfig& config,
-    const HostDisplays& displays)
-{
-    SDL_Window* const window =
-        assignment_window(role, playfield, dmd, backglass);
-    if (window == nullptr || displays.ids.empty()
-        || displays.ids.size() != displays.descriptors.size()) {
-        return true;
-    }
-    const auto current_id = SDL_GetDisplayForWindow(window);
-    std::size_t current = 0U;
-    for (std::size_t index = 0; index < displays.ids.size(); ++index) {
-        if (displays.ids[index] == current_id) {
-            current = index;
-            break;
-        }
-    }
-    const auto count = static_cast<std::int64_t>(displays.ids.size());
-    auto next =
-        (static_cast<std::int64_t>(current) + direction) % count;
-    if (next < 0) {
-        next += count;
-    }
-    const auto target = static_cast<std::size_t>(next);
-    auto& placement = assignment_placement(role, config);
-    placement.display_identity = displays.descriptors[target].identity;
-    placement.rotation = displays.descriptors[target].rotation;
-    const auto [default_width, default_height] =
-        assignment_default_size(role);
-    const auto& bounds = displays.descriptors[target].bounds;
-    const auto width = std::min(default_width, bounds.width);
-    const auto height = std::min(default_height, bounds.height);
-    placement.geometry = {
-        .x = bounds.x + (bounds.width - width) / 2,
-        .y = bounds.y + (bounds.height - height) / 2,
-        .width = width,
-        .height = height,
-    };
-    return apply_window_placement(
-        window,
-        placement,
-        displays,
-        default_width,
-        default_height);
-}
-
-[[nodiscard]] bool present_assignment(
-    SDL_Renderer* const renderer,
-    const AssignmentRole role,
-    const bool selected)
-{
-    if (renderer == nullptr) {
-        return true;
-    }
-    std::array<std::uint8_t, 3> color{};
-    switch (role) {
-    case AssignmentRole::playfield:
-        color = {24U, 72U, 160U};
-        break;
-    case AssignmentRole::dmd:
-        color = {184U, 56U, 8U};
-        break;
-    case AssignmentRole::backglass:
-        color = {96U, 32U, 128U};
-        break;
-    }
-    if (!SDL_SetRenderDrawColor(
-            renderer,
-            color[0],
-            color[1],
-            color[2],
-            255U)
-        || !SDL_RenderClear(renderer)) {
-        return report_sdl_error("Clearing a cabinet assignment window failed");
-    }
-    int width = 0;
-    int height = 0;
-    if (!SDL_GetRenderOutputSize(renderer, &width, &height)) {
-        return report_sdl_error(
-            "Reading a cabinet assignment window size failed");
-    }
-    if (selected && width > 0 && height > 0) {
-        const auto border =
-            std::max(4.0F, std::min(width, height) / 32.0F);
-        const auto inside_width =
-            std::max(0.0F, static_cast<float>(width) - 2.0F * border);
-        const auto inside_height =
-            std::max(0.0F, static_cast<float>(height) - 2.0F * border);
-        const std::array marker{
-            SDL_FRect{border, border, inside_width, border},
-            SDL_FRect{
-                border,
-                static_cast<float>(height) - 2.0F * border,
-                inside_width,
-                border,
-            },
-            SDL_FRect{border, border, border, inside_height},
-            SDL_FRect{
-                static_cast<float>(width) - 2.0F * border,
-                border,
-                border,
-                inside_height,
-            },
-        };
-        if (!SDL_SetRenderDrawColor(renderer, 255U, 240U, 96U, 255U)
-            || !SDL_RenderFillRects(
-                renderer,
-                marker.data(),
-                static_cast<int>(marker.size()))) {
-            return report_sdl_error(
-                "Drawing a cabinet assignment marker failed");
-        }
-    }
-    return SDL_RenderPresent(renderer)
-        || report_sdl_error(
-            "Presenting a cabinet assignment window failed");
 }
 
 [[nodiscard]] bool present_black(AuxiliaryWindow& output)

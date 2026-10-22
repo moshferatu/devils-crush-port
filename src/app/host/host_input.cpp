@@ -168,7 +168,22 @@ struct ProbedAxis {
                 devils_crush::cabinet::pad_button_field(binding.pad));
     }
     resolved.launch = resolve_key_names(bindings.launch_keys, "launch");
+    resolved.smoothing =
+        resolve_key_names(bindings.smoothing_keys, "smoothing");
+    resolved.next_window =
+        resolve_key_names(bindings.next_window_keys, "next_window");
+    resolved.fullscreen =
+        resolve_key_names(bindings.fullscreen_keys, "fullscreen");
+    resolved.next_monitor =
+        resolve_key_names(bindings.next_monitor_keys, "next_monitor");
     return resolved;
+}
+
+[[nodiscard]] bool key_is_bound(
+    const std::vector<SDL_Scancode>& keys,
+    const SDL_Scancode scancode) noexcept
+{
+    return std::ranges::find(keys, scancode) != keys.end();
 }
 
 // The pad byte and the emulator's `Button` bits are the same eight bits, so

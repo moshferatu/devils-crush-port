@@ -840,6 +840,10 @@ input.left=Left Shift,Left
 input.left_flipper=left
 input.right_flipper=right,up
 input.launch=Return
+input.smoothing=F6
+input.next_window=F10
+input.fullscreen=F11
+input.next_monitor=F12
 input.plunger.device=
 input.plunger.axis=-1
 input.plunger.rest=0
@@ -864,7 +868,7 @@ The gamepad keeps a fixed layout — south and east for buttons I and II, the
 hat for directions — since only the keyboard has to match whatever a
 cabinet's encoder is wired to send.
 
-`devils-crush.ini` is rewritten in full on exit and after display assignment, so
+`devils-crush.ini` is rewritten in full on exit, so
 the bindings are a stored field rather than a passthrough: an existing file
 without them gains the section the first time the host exits normally.
 
@@ -893,7 +897,7 @@ placements above them are untouched.
 ### The mouse cursor
 
 The host hides it at startup. Nothing here reads the mouse — not play, not
-the F12 display assignment, which is entirely keyboard-driven — so a pointer
+the window keys — so a pointer
 left on the playfield is only something to look at, and a cabinet has no way
 to move it off. `SDL_HideCursor` is application-wide, so one call covers the
 DMD and backglass windows too, and `SDL_Quit` restores it on exit.
@@ -999,20 +1003,23 @@ The DMD and backglass are left alone; they are created
 
 ## Display assignment and persistence
 
-Press F12 in cabinet mode to pause emulation and enter display assignment.
-The playfield, DMD, and backglass become blue, orange, and purple
-identification screens. A yellow inset marks the selected role. The window
-titles carry the controls:
+The windows are placed while the game runs, with the same keys as the
+Alien Crush port. The DMD and backglass never take the keyboard, so they
+float beside a fullscreen playfield. The host keeps a selected window
+instead, starting at the playfield, and shows it nowhere:
 
-- 1, 2, or 3 selects the playfield, DMD, or backglass.
-- Left and Right cycle the selected role across currently connected displays.
-- F toggles borderless fullscreen for that role.
-- B opens the native PNG/JPEG/WebP backglass picker.
-- Delete clears the selected static backglass fallback.
-- Enter, Escape, or F12 saves the assignments and resumes emulation.
+- F10 selects the next window (playfield, DMD, backglass), and Shift+F10 the
+  previous one, skipping a window that is closed.
+- F11 toggles borderless fullscreen for the selected window.
+- F12 moves the selected window to the next connected display, and Shift+F12
+  to the previous one, centred at its own size and still fullscreen if it was.
 
-The host atomically stores `devils-crush.ini` after assignment and
-on normal exit. Each role records the SDL display name, a fallback window
+These keys and F6 are `input.next_window`, `input.fullscreen`,
+`input.next_monitor` and `input.smoothing` in `devils-crush.ini`, lists of key
+names like the pad's, and the launcher's Keyboard tab edits them. The DMD and
+backglass can also be dragged, or placed with the launcher's monitor settings.
+
+The host atomically stores `devils-crush.ini` on normal exit. Each role records the SDL display name, a fallback window
 rectangle, the display's current orientation, and fullscreen state. Startup
 matches the exact display name first. If that display is absent, it chooses
 the display with the greatest overlap against the saved rectangle, then the
@@ -1031,7 +1038,7 @@ window still does not affect emulation.
 
 A user-supplied backglass image was supported for a while — a `backglass.path`
 field in `devils-crush.ini`, a `--backglass <image>` switch, and a file picker on
-the F12 screen — and has been removed along with the SDL_image dependency that
+the old F12 assignment screen — and has been removed along with the SDL_image dependency that
 decoded it. A configuration file still naming an image loads normally: an
 unknown field is ignored, and the line disappears the next time the file is
 written.
@@ -1687,8 +1694,10 @@ own display layout, high scores, and quick states. Syncthing does not sync
 `.stignore` itself: the cabinet's copy needs the same patterns.
 
 That also means display assignment is a one-time step on the cabinet itself:
-launch with `--cabinet`, press F12, and assign the playfield, DMD, and
-backglass to the cabinet's own displays as described above.
+launch with `--cabinet`, move the playfield, DMD, and backglass onto the
+cabinet's own displays (F10 selects a window and F12 moves it; the
+launcher's monitor settings place all three), and exit normally so the layout
+is saved.
 
 ## Remaining cabinet work
 

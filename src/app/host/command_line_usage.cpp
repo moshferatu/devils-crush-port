@@ -430,10 +430,14 @@ void print_usage()
            "                       the rod was drawn to\n"
         << "  F5                   Save quick state\n"
         << "  F9                   Restore quick state (disabled while capturing)\n"
-        << "  F10                  Reload custom gamepad mappings\n"
-        << "  F11                  Toggle borderless fullscreen\n"
+        << "  F6                   Toggle smoothing\n"
+        << "  F10 / Shift+F10      Cabinet: select the next / previous window\n"
+        << "  F11                  Toggle borderless fullscreen (cabinet: the\n"
+           "                       selected window)\n"
         << "  F8                   Capture 4 playfield frames as BMP\n"
-        << "  F12                  Cabinet display assignment\n"
+        << "  F12 / Shift+F12      Cabinet: move the selected window to the\n"
+           "                       next / previous monitor\n"
+        << "  The F6, F10, F11 and F12 keys can be rebound in the launcher.\n"
         << "  Escape               Exit\n";
 }
 

@@ -9264,6 +9264,54 @@ void test_cabinet_display_config()
             no_launch_decoded && no_launch_decoded->input.launch_keys.empty(),
             "an empty launch list disables the shooter override");
 
+        // The game's own keys, shared with the Alien Crush port's file.
+        check(
+            defaults.smoothing_keys == std::vector<std::string>{"F6"}
+                && defaults.next_window_keys
+                    == std::vector<std::string>{"F10"}
+                && defaults.fullscreen_keys
+                    == std::vector<std::string>{"F11"}
+                && defaults.next_monitor_keys
+                    == std::vector<std::string>{"F12"},
+            "a file without the window keys gets F6, F10, F11 and F12");
+        auto window_keys = legacy;
+        window_keys +=
+            "input.smoothing=F7\ninput.next_window=Tab,F10\n"
+            "input.fullscreen=\ninput.next_monitor=Page Down\n";
+        const auto window_keys_decoded =
+            decode_display_config(to_bytes(window_keys));
+        check(
+            window_keys_decoded
+                && window_keys_decoded->input.smoothing_keys
+                    == std::vector<std::string>{"F7"}
+                && window_keys_decoded->input.next_window_keys
+                    == std::vector<std::string>{"Tab", "F10"}
+                && window_keys_decoded->input.fullscreen_keys.empty()
+                && window_keys_decoded->input.next_monitor_keys
+                    == std::vector<std::string>{"Page Down"},
+            "the window keys are configurable, and an empty list unbinds one");
+        if (window_keys_decoded) {
+            const auto encoded = encode_display_config(*window_keys_decoded);
+            const auto round_trip = decode_display_config(encoded);
+            check(
+                round_trip && round_trip->input == window_keys_decoded->input,
+                "the window keys survive a write and a read");
+            const std::string text(
+                reinterpret_cast<const char*>(encoded.data()), encoded.size());
+            const auto launch_at = text.find("\ninput.launch=");
+            const auto smoothing_at = text.find("\ninput.smoothing=F7\n");
+            const auto window_at = text.find("\ninput.next_window=Tab,F10\n");
+            const auto fullscreen_at = text.find("\ninput.fullscreen=\n");
+            const auto monitor_at = text.find("\ninput.next_monitor=");
+            check(
+                launch_at != std::string::npos
+                    && smoothing_at == text.find('\n', launch_at + 1U)
+                    && smoothing_at < window_at && window_at < fullscreen_at
+                    && fullscreen_at < monitor_at
+                    && monitor_at != std::string::npos,
+                "the window keys are written in order right after input.launch");
+        }
+
         check(defaults.nudge == devils_crush::input::NudgeBinding{},
               "legacy settings receive the Alien Crush PinOne nudge defaults");
         const auto nudging = decode_display_config(to_bytes(legacy +

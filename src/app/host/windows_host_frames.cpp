@@ -77,7 +77,7 @@ void HostSession::run()
         // still follows display changes processed by SDL_PollEvent above.
         const auto* refresh_mode = SDL_GetDesktopDisplayMode(SDL_GetDisplayForWindow(window));
         const bool smooth_table = smoothing_enabled && vsync_enabled
-            && layers == CabinetLayers::all && !assignment_active
+            && layers == CabinetLayers::all
             && refresh_mode != nullptr
             && refresh_mode->refresh_rate > kEmulationFramesPerSecond * 1.05;
         if (!reported_smoothing || *reported_smoothing != smooth_table) {
@@ -95,7 +95,7 @@ void HostSession::run()
         const bool nudge_focused = focused_window != nullptr
             && (focused_window == window || focused_window == dmd.window
                 || focused_window == backglass.window);
-        if (!nudge_focused || assignment_active) nudge.model.rearm();
+        if (!nudge_focused) nudge.model.rearm();
         run_due_frames(smooth_table, nudge_focused);
         present_playfield(smooth_table);
         present_cabinet_displays();
@@ -106,6 +106,14 @@ void HostSession::run()
             SDL_Delay(1);
         }
     }
+}
+
+SDL_Window* HostSession::selected_cabinet_window() const noexcept
+{
+    SDL_Window* const selected = selected_window == 1 ? dmd.window
+        : selected_window == 2                       ? backglass.window
+                                                     : window;
+    return selected != nullptr ? selected : window;
 }
 
 void HostSession::handle_events()
@@ -119,8 +127,12 @@ void HostSession::handle_events()
             rotation = (rotation + ((event.key.mod & SDL_KMOD_SHIFT) ? 270 : 90)) % 360;
             std::cout << "Playfield rotation: " << rotation << " degrees\n";
         }
-        if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat
-            && event.key.key == SDLK_F6) {
+        const bool key_press =
+            event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat;
+        const bool shift =
+            key_press && (event.key.mod & SDL_KMOD_SHIFT) != 0U;
+        if (key_press
+            && key_is_bound(key_bindings.smoothing, event.key.scancode)) {
             presentation_sample.report(smoothing_enabled);
             presentation_sample = {};
             smoothing_enabled = !smoothing_enabled;
@@ -173,94 +185,29 @@ void HostSession::handle_events()
             playfield_dump_remaining = 4;
             std::cout << "Cabinet playfield capture armed.\n";
         } else if (
-            cabinet_mode && event.type == SDL_EVENT_KEY_DOWN
-            && !event.key.repeat && event.key.key == SDLK_F12) {
-            assignment_active = !assignment_active;
-            if (assignment_active) {
-                host_displays = enumerate_host_displays();
-                cabinet_config.playfield =
-                    capture_window_placement(
-                        window,
-                        host_displays,
-                        cabinet_config.playfield);
-                cabinet_config.dmd = capture_window_placement(
-                    dmd.window,
-                    host_displays,
-                    cabinet_config.dmd);
-                cabinet_config.backglass =
-                    capture_window_placement(
-                        backglass.window,
-                        host_displays,
-                        cabinet_config.backglass);
-            }
-            set_assignment_titles(
-                window,
-                window_title,
-                dmd,
-                backglass,
-                assignment_active,
-                assignment_role);
-            if (!assignment_active) {
-                save_current_cabinet_config();
-            }
-            next_frame_time = Clock::now();
-        } else if (
-            assignment_active
-            && event.type == SDL_EVENT_KEY_DOWN
-            && !event.key.repeat) {
-            if (event.key.key == SDLK_RETURN
-                || event.key.key == SDLK_ESCAPE) {
-                assignment_active = false;
-                save_current_cabinet_config();
-            } else if (event.key.key == SDLK_1) {
-                assignment_role = AssignmentRole::playfield;
-            } else if (event.key.key == SDLK_2) {
-                assignment_role = AssignmentRole::dmd;
-            } else if (event.key.key == SDLK_3) {
-                assignment_role = AssignmentRole::backglass;
-            } else if (
-                event.key.key == SDLK_LEFT
-                || event.key.key == SDLK_RIGHT) {
-                host_ok = cycle_assignment_display(
-                    assignment_role,
-                    event.key.key == SDLK_RIGHT ? 1 : -1,
-                    window,
-                    dmd,
-                    backglass,
-                    cabinet_config,
-                    host_displays);
-            } else if (event.key.key == SDLK_F) {
-                SDL_Window* const selected_window =
-                    assignment_window(
-                        assignment_role,
-                        window,
-                        dmd,
-                        backglass);
-                if (selected_window != nullptr) {
-                    auto& placement = assignment_placement(
-                        assignment_role,
-                        cabinet_config);
-                    placement.fullscreen =
-                        (SDL_GetWindowFlags(selected_window)
-                         & SDL_WINDOW_FULLSCREEN)
-                        == 0U;
-                    if (!SDL_SetWindowFullscreen(
-                            selected_window,
-                            placement.fullscreen)) {
-                        host_ok = report_sdl_error(
-                            "Changing an assigned window's "
-                            "fullscreen state failed");
-                    }
+            cabinet_mode && key_press
+            && key_is_bound(key_bindings.next_window, event.key.scancode)) {
+            // Windows that are closed or never opened are skipped; the
+            // playfield is always there.
+            SDL_Window* const windows[]{window, dmd.window, backglass.window};
+            static constexpr const char* names[]{
+                "Playfield", "DMD", "Backglass"};
+            for (int step = 0; step < 3; ++step) {
+                selected_window = (selected_window + (shift ? 2 : 1)) % 3;
+                if (windows[selected_window] != nullptr) {
+                    break;
                 }
             }
-            set_assignment_titles(
-                window,
-                window_title,
-                dmd,
-                backglass,
-                assignment_active,
-                assignment_role);
-            next_frame_time = Clock::now();
+            std::cout << "Selected cabinet window: "
+                      << names[selected_window] << '\n';
+        } else if (
+            cabinet_mode && key_press
+            && key_is_bound(key_bindings.next_monitor, event.key.scancode)) {
+            host_displays = enumerate_host_displays();
+            SDL_Window* const windows[]{window, dmd.window, backglass.window};
+            (void)move_to_next_display(
+                selected_cabinet_window(), shift ? -1 : 1, host_displays,
+                windows);
         } else if (
             event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat
             && event.key.key == SDLK_ESCAPE) {
@@ -292,20 +239,19 @@ void HostSession::handle_events()
                 next_frame_time = Clock::now();
             }
         } else if (
-            event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat
-            && event.key.key == SDLK_F10) {
-            if (load_gamepad_mappings(kGamepadMappingsPath)) {
-                if (gamepad != nullptr) {
-                    SDL_CloseGamepad(gamepad);
-                }
-                gamepad = open_first_gamepad();
-            }
-        } else if (
-            event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat
-            && event.key.key == SDLK_F11) {
+            key_press
+            && key_is_bound(key_bindings.fullscreen, event.key.scancode)) {
+            SDL_Window* const focused =
+                cabinet_mode ? selected_cabinet_window() : window;
             const bool fullscreen =
-                (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0;
-            if (!SDL_SetWindowFullscreen(window, !fullscreen)) {
+                (SDL_GetWindowFlags(focused) & SDL_WINDOW_FULLSCREEN) != 0;
+            SDL_Window* const windows[]{window, dmd.window, backglass.window};
+            if (!fullscreen
+                && fullscreen_beside(
+                    focused, SDL_GetDisplayForWindow(focused), windows)) {
+                std::cout << "Another cabinet window is fullscreen on that "
+                             "monitor; take it out of fullscreen first.\n";
+            } else if (!SDL_SetWindowFullscreen(focused, !fullscreen)) {
                 report_sdl_error("SDL_SetWindowFullscreen failed");
             }
         } else if (
@@ -361,7 +307,7 @@ void HostSession::run_due_frames(
     auto now = Clock::now();
     int catch_up_frames = 0;
     constexpr int kMaximumCatchUpFrames = 4;
-    while (running && host_ok && !assignment_active
+    while (running && host_ok
            && now >= next_frame_time
            && catch_up_frames < kMaximumCatchUpFrames
            && (frame_limit <= 0 || emulated_frames < frame_limit)) {
@@ -623,59 +569,49 @@ void HostSession::run_due_frames(
         && now >= next_frame_time) {
         next_frame_time = now + frame_period;
     }
-    if (assignment_active) {
-        next_frame_time = now + frame_period;
-    }
 }
 
 void HostSession::present_playfield(const bool smooth_table)
 {
     if (running && host_ok) {
-        if (assignment_active) {
-            host_ok = present_assignment(
-                renderer,
-                AssignmentRole::playfield,
-                assignment_role == AssignmentRole::playfield);
+        const auto aspect_numerator =
+            table_view
+            ? devils_crush::cabinet::kTableAspectNumerator
+            : kDisplayAspectNumerator;
+        const auto aspect_denominator =
+            table_view
+            ? devils_crush::cabinet::kTableAspectDenominator
+            : kDisplayAspectDenominator;
+        const bool interpolate = smooth_table && table_view && motion_ready;
+        const bool room_pieces = smooth_table && !table_view && viewport_motion.ready;
+        const bool blend_frame = smooth_table && !table_view && !room_pieces
+            && frame_artwork.current.texture;
+        const auto motion_alpha = std::clamp(static_cast<float>(
+            std::chrono::duration<double>(Clock::now() - next_frame_time + frame_period).count()
+            / std::chrono::duration<double>(frame_period).count()), 0.0F, 1.0F);
+        host_ok = present_frame(
+            renderer,
+            source,
+            stage,
+            aspect_numerator,
+            aspect_denominator,
+            cabinet_mode ? kPureBlack : kDesktopFrameColor,
+            0.0F,
+            cabinet_mode && bonus_view && !table_view,
+            interpolate ? &table_motion
+                : room_pieces ? &viewport_motion.pieces : nullptr,
+            motion_alpha,
+            blend_frame ? &frame_artwork : nullptr,
+            cabinet_config.playfield_rotation_degrees,
+            &playfield_picture);
+        if (host_ok && (table_view || room_pieces || blend_frame)) {
+            presentation_sample.observe(emulated_frames,
+                (interpolate || room_pieces || blend_frame) && motion_alpha < 1.0F,
+                Clock::now());
+            if (Clock::now() - presentation_sample.start >= std::chrono::seconds(5))
+                presentation_sample.report(smoothing_enabled);
         } else {
-            const auto aspect_numerator =
-                table_view
-                ? devils_crush::cabinet::kTableAspectNumerator
-                : kDisplayAspectNumerator;
-            const auto aspect_denominator =
-                table_view
-                ? devils_crush::cabinet::kTableAspectDenominator
-                : kDisplayAspectDenominator;
-            const bool interpolate = smooth_table && table_view && motion_ready;
-            const bool room_pieces = smooth_table && !table_view && viewport_motion.ready;
-            const bool blend_frame = smooth_table && !table_view && !room_pieces
-                && frame_artwork.current.texture;
-            const auto motion_alpha = std::clamp(static_cast<float>(
-                std::chrono::duration<double>(Clock::now() - next_frame_time + frame_period).count()
-                / std::chrono::duration<double>(frame_period).count()), 0.0F, 1.0F);
-            host_ok = present_frame(
-                renderer,
-                source,
-                stage,
-                aspect_numerator,
-                aspect_denominator,
-                cabinet_mode ? kPureBlack : kDesktopFrameColor,
-                0.0F,
-                cabinet_mode && bonus_view && !table_view,
-                interpolate ? &table_motion
-                    : room_pieces ? &viewport_motion.pieces : nullptr,
-                motion_alpha,
-                blend_frame ? &frame_artwork : nullptr,
-                cabinet_config.playfield_rotation_degrees,
-                &playfield_picture);
-            if (host_ok && (table_view || room_pieces || blend_frame)) {
-                presentation_sample.observe(emulated_frames,
-                    (interpolate || room_pieces || blend_frame) && motion_alpha < 1.0F,
-                    Clock::now());
-                if (Clock::now() - presentation_sample.start >= std::chrono::seconds(5))
-                    presentation_sample.report(smoothing_enabled);
-            } else {
-                presentation_sample = {};
-            }
+            presentation_sample = {};
         }
     }
 }
@@ -695,28 +631,19 @@ void HostSession::present_cabinet_displays()
             Clock::now() - dmd_high_score_epoch)
             .count();
     if (running && dmd.renderer != nullptr && dmd_font
-        && !(assignment_active
-                ? present_assignment(
-                    dmd.renderer, AssignmentRole::dmd,
-                    assignment_role == AssignmentRole::dmd)
-                : present_dmd_panel(dmd,
+        && !present_dmd_panel(dmd,
                     dmd_panel.compose(*dmd_font,
                         high_scores.table_seen ? &high_scores.last : nullptr,
                         static_cast<std::uint64_t>(dmd_high_score_elapsed),
                         dmd_ending_head ? &*dmd_ending_head : nullptr),
-                    dmd_source, dmd_stage))) {
+                    dmd_source, dmd_stage)) {
         destroy_stage(dmd_stage);
         destroy_source(dmd_source);
         std::cerr << "Cabinet DMD renderer lost; disabling DMD.\n";
         destroy_auxiliary_window(dmd);
     }
     if (running && backglass.renderer != nullptr
-        && !(assignment_active
-                ? present_assignment(
-                    backglass.renderer,
-                    AssignmentRole::backglass,
-                    assignment_role == AssignmentRole::backglass)
-                : backglass_logo_source.texture != nullptr
+        && !(backglass_logo_source.texture != nullptr
                     ? present_frame(
                         backglass.renderer,
                         backglass_logo_source,

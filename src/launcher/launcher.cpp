@@ -218,7 +218,7 @@ enum Setting {
 };
 
 // A binding row's list, as a group and an index into it.
-enum { G_KEYS = 1, G_LAUNCH, G_FLIPPER };
+enum { G_KEYS = 1, G_LAUNCH, G_FLIPPER, G_HOTKEY };
 constexpr int bind(int g, int i) { return g << 8 | i; }
 
 struct Choice {
@@ -239,7 +239,7 @@ struct Row {
 
 constexpr Choice on_off[] = {{0, "Off"}, {1, "On"}};
 constexpr Choice rotation_choices[] = {{0, "0\xC2\xB0"}, {90, "90\xC2\xB0"}, {180, "180\xC2\xB0"}, {270, "270\xC2\xB0"}};
-constexpr Choice cabinet_choices[] = {{1, "Cabinet (three windows)"}, {0, "Desktop (one window)"}};
+constexpr Choice cabinet_choices[] = {{1, "Cabinet (3 Windows)"}, {0, "Desktop (1 Window)"}};
 
 template <typename T, std::size_t N>
 constexpr int count_of(const T (&)[N]) { return static_cast<int>(N); }
@@ -273,7 +273,7 @@ constexpr std::array<const char*, kPadButtonCount> pad_names = {
 
 void build_rows()
 {
-    add(TAB_GAME, Row{K_PATH, S_ROM, "ROM File", "The original game ROM file."});
+    add(TAB_GAME, Row{K_PATH, S_ROM, "ROM", "The original game ROM file."});
     add_choice(TAB_GAME, S_CABINET, "Mode", cabinet_choices, count_of(cabinet_choices),
         "How the game should be displayed, either in multiple windows or a single one.");
     add_range(TAB_MISC, S_BONUS_STAGE, "Starting Bonus Stage", 0, 6, 1, false,
@@ -286,9 +286,9 @@ void build_rows()
     static const char cabinet_only[] =
         "For the cabinet's windows; a desktop window ignores it.";
     static const char monitor_help[] =
-        "The monitor the window opens on. F12 in the game moves the windows too, and the game "
+        "The monitor the window opens on. F12 in the game moves the selected window too, and the game "
         "remembers where they were left.";
-    add_head(TAB_VIDEO, "Cabinet Windows", cabinet_only);
+    add_head(TAB_VIDEO, "Windows", cabinet_only);
     add_choice(TAB_VIDEO, S_ROTATION, "Playfield Rotation", rotation_choices, count_of(rotation_choices),
         "How far the playfield's picture is turned clockwise, for a monitor that is mounted on its "
         "side. R and Shift+R turn it while playing, and the game remembers.");
@@ -364,6 +364,14 @@ void build_rows()
     add_head(TAB_KEYBOARD, "Flippers", flipper_help);
     add(TAB_KEYBOARD, Row{K_INPUTS, bind(G_FLIPPER, 0), "Left Flipper", flipper_help});
     add(TAB_KEYBOARD, Row{K_INPUTS, bind(G_FLIPPER, 1), "Right Flipper", flipper_help});
+    static const char window_help[] =
+        "Keys the game answers to outside the pad. Next Window picks the cabinet window that "
+        "Fullscreen and Next Monitor act on; Shift goes the other way.";
+    add_head(TAB_KEYBOARD, "Hotkeys", window_help);
+    add(TAB_KEYBOARD, Row{K_KEYS, bind(G_HOTKEY, 0), "Toggle Smoothing", window_help});
+    add(TAB_KEYBOARD, Row{K_KEYS, bind(G_HOTKEY, 1), "Select Next Window", window_help});
+    add(TAB_KEYBOARD, Row{K_KEYS, bind(G_HOTKEY, 2), "Toggle Fullscreen", window_help});
+    add(TAB_KEYBOARD, Row{K_KEYS, bind(G_HOTKEY, 3), "Move Window to Next Monitor", window_help});
 }
 
 devils_crush::cabinet::WindowPlacement& placement_of(DisplayConfig& c, int id)
@@ -450,7 +458,7 @@ int monitor_get(DisplayConfig& c, int id)
     return static_cast<int>(devils_crush::cabinet::resolve_display(p, monitors.list).value_or(0));
 }
 
-// Onto the monitor, in the middle, as F12 in the game puts it: at the size the
+// Onto the monitor, in the middle: at the size the
 // window was if that fits, and the game's own size for it if not.
 void monitor_set(DisplayConfig& c, int id, int v)
 {
@@ -548,6 +556,14 @@ std::string& text_of(DisplayConfig& c, int id)
 
 std::vector<std::string>& keys_of(DisplayConfig& c, int id)
 {
+    if ((id >> 8) == G_HOTKEY) {
+        switch (id & 0xFF) {
+        case 0: return c.input.smoothing_keys;
+        case 1: return c.input.next_window_keys;
+        case 2: return c.input.fullscreen_keys;
+        default: return c.input.next_monitor_keys;
+        }
+    }
     return (id >> 8) == G_LAUNCH ? c.input.launch_keys : c.input.keys[static_cast<std::size_t>(id & 0xFF)];
 }
 
@@ -1139,7 +1155,7 @@ void capture_key(SDL_Scancode sc)
     }
     auto& list = keys_of(ui.cfg, r->id);
     for (const auto& k : list)
-        if (same_ignoring_case(k, name)) { say("%s is already here.", name); return; }
+        if (same_ignoring_case(k, name)) { say("%s is already bound here.", name); return; }
     if (list.size() < kKeysMax) { list.emplace_back(name); changed(); }
 }
 

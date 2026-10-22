@@ -87,10 +87,12 @@ others, and it is not available with `--capture-session`.
 | F5 / F9 | Save and restore a quick state |
 | F6 | Toggle playfield motion/artwork smoothing on high-refresh displays |
 | R / Shift+R | Rotate the main playfield clockwise / counterclockwise by 90° |
-| F10 | Reload `gamecontrollerdb.txt` after editing it |
-| F11 | Toggle playfield borderless fullscreen |
-| F12 | Open cabinet display assignment |
-| Escape | Quit (outside the display assignment screen) |
+| F10 / Shift+F10 | Select the next / previous cabinet window (cabinet mode) |
+| F11 | Toggle borderless fullscreen for the selected window (the playfield outside cabinet mode) |
+| F12 / Shift+F12 | Move the selected window to the next / previous connected monitor (cabinet mode) |
+
+F6, F10, F11 and F12 can be rebound on the launcher's Keyboard tab.
+| Escape | Quit |
 
 The flag `--emulate-only` can be used to execute the original assembly instead, should that be necessary.
 
@@ -145,18 +147,23 @@ Cabinet mode runs the game using 3 windows:
 2. The DMD (Dot Matrix Display) window plays the head from the game's ending and cycles through the five high scores at startup, then displays the current score, bonus points, and ball once play begins.
 3. The backglass window displays the game's artwork.
 
-### Screen Assignment
+### Placing the windows
 
-Press F12 to pause into display assignment:
+The DMD and backglass float above the playfield and never take the keyboard,
+so they can sit beside a fullscreen playfield. Drag them into place, pick
+their monitors in the launcher, or use these keys. The playfield starts
+selected; nothing on screen marks the selection. The layout is saved when the
+game exits.
 
 | Key | |
 | --- | --- |
-| 1 / 2 / 3 | Select the playfield, DMD, or backglass |
-| Left / Right | Cycle that role's monitor |
-| F | Toggle that role's fullscreen state |
-| B | Open the backglass picker |
-| Delete | Clear the backglass image |
-| Enter, Escape, F12 | Save and return |
+| F10 / Shift+F10 | Select the next / previous window: playfield, DMD, backglass |
+| F11 | Toggle fullscreen for the selected window |
+| F12 / Shift+F12 | Move the selected window to the next / previous connected monitor |
+
+Only one window can be fullscreen on a monitor, so F11 does nothing while
+another cabinet window fills that monitor, and F12 passes over such a monitor
+for a fullscreen window.
 
 ### Deploying to a cabinet
 

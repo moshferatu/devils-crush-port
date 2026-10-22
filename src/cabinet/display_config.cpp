@@ -229,15 +229,26 @@ void append_bindings(std::string& output, const InputBindings& input)
     append_flipper("left_flipper", input.flippers.left);
     append_flipper("right_flipper", input.flippers.right);
 
-    output += "input.launch=";
-    bool first_launch = true;
-    for (const auto& key : input.launch_keys) {
-        if (!std::exchange(first_launch, false)) {
-            output += ',';
+    const auto append_keys = [&output](
+                                 const std::string_view key,
+                                 const std::vector<std::string>& keys) {
+        output += "input.";
+        output += key;
+        output += '=';
+        bool first = true;
+        for (const auto& name : keys) {
+            if (!std::exchange(first, false)) {
+                output += ',';
+            }
+            output += escape_value(name);
         }
-        output += escape_value(key);
-    }
-    output += '\n';
+        output += '\n';
+    };
+    append_keys("launch", input.launch_keys);
+    append_keys("smoothing", input.smoothing_keys);
+    append_keys("next_window", input.next_window_keys);
+    append_keys("fullscreen", input.fullscreen_keys);
+    append_keys("next_monitor", input.next_monitor_keys);
 
     // Written as six plain numbers and a name rather than as a device
     // identifier, because the two that matter -- the axis and its two
@@ -392,13 +403,23 @@ void append_bindings(std::string& output, const InputBindings& input)
             inputs = std::move(parsed);
             return true;
         };
-    const auto launch = fields.find("input.launch");
-    if (launch != fields.end()) {
-        auto parsed = parse_binding(launch->second);
+    const std::pair<std::string_view, std::vector<std::string>*> key_lists[]{
+        {"input.launch", &input.launch_keys},
+        {"input.smoothing", &input.smoothing_keys},
+        {"input.next_window", &input.next_window_keys},
+        {"input.fullscreen", &input.fullscreen_keys},
+        {"input.next_monitor", &input.next_monitor_keys},
+    };
+    for (const auto& [key, keys] : key_lists) {
+        const auto found = fields.find(key);
+        if (found == fields.end()) {
+            continue;
+        }
+        auto parsed = parse_binding(found->second);
         if (!parsed) {
             return false;
         }
-        input.launch_keys = std::move(*parsed);
+        *keys = std::move(*parsed);
     }
 
     for (const auto& [key, value] : fields) {
@@ -706,6 +727,11 @@ InputBindings default_input_bindings()
     // button I alone while the ball is in the shooter, so it launches instead
     // of pausing, and leaves it starting and pausing everywhere else.
     bindings.launch_keys = {"Return"};
+
+    bindings.smoothing_keys = {"F6"};
+    bindings.next_window_keys = {"F10"};
+    bindings.fullscreen_keys = {"F11"};
+    bindings.next_monitor_keys = {"F12"};
     return bindings;
 }
 
