@@ -1,4 +1,4 @@
-# Devil's Crush PC Port
+# Devil's Crush Port
 
 An unofficial PC port of the 1990 TurboGrafx-16 pinball game *[Devil's Crush](https://en.wikipedia.org/wiki/Devil%27s_Crush)*, built to be played on a virtual pinball cabinet.
 
