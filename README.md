@@ -56,6 +56,14 @@ cmake --preset windows-vs2022
 cmake --build --preset windows-release
 ```
 
+To build the release zip, `out\devils-crush-windows-x86_64.zip`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\Build-Release.ps1
+```
+
+It holds the game and the launcher, with SDL and the C runtime built in, and never the ROM.
+
 ## Port Progress
 
 The port is fully playable, but is a work in progress.
