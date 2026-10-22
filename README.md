@@ -6,17 +6,14 @@ An unofficial PC port of the 1990 TurboGrafx-16 pinball game *[Devil's Crush](ht
 
 It plays like the original game, with some additional features:
 
-* Cabinet mode shows the whole table at once, with the backglass and the score on their own screens
+* Cabinet mode shows the whole table at once, with the playfield, backglass, and score in their own windows
 * Creatures and targets across the table stay active in cabinet mode, instead of only those near the ball
 * Smoother motion on high refresh rate displays
-* Keyboard and USB controller support, with rebindable keys
-* Analog plunger and accelerometer nudging on PinOne boards
+* Analog plunger and accelerometer nudging (verified working on PinOne boards)
 * Adjustable nudge strength
 * Music keeps all of its parts while sound effects play
-* Quick saving and quick loading
 * High scores are saved between sessions
 * Start the game in any bonus stage
-* Optional cheat for testing: drag the ball around the table with the mouse
 
 ## ROM (Required)
 
@@ -47,32 +44,11 @@ Choose your ROM file under game settings, change any other setting you like, the
 | F5 / F9 | Quick save / quick load |
 | Escape | Exit |
 
-See [Setup and configuration](docs/SETUP.md) for the rest of the controls, the settings file, and cabinet monitors, nudging and plunger.
-
-## Building
-
-Requires Windows, Visual Studio 2022 C++ tools and CMake 3.30+.
-
-```powershell
-cmake --preset windows-vs2022
-cmake --build --preset windows-release
-```
-
-To build the release zip, `out\devils-crush-windows-x86_64.zip`:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File tools\Build-Release.ps1
-```
-
-It holds the game and the launcher, with SDL and the C runtime built in, and never the ROM.
-
 ## Port Progress
 
 The port is fully playable, but is a work in progress.
 
 TurboGrafx-16 hardware is still partially emulated, and the game's own logic is being progressively replaced with native C++ validated against original ROM execution.
-
-See [PROGRESS.md](PROGRESS.md) for details.
 
 ## Credits
 
