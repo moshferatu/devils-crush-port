@@ -8,16 +8,16 @@ small on purpose. Detail lives in `docs/`:
 | Question | Document |
 | --- | --- |
 | Architecture and delivery plan | [PLAN.md](PLAN.md) |
-| What the port has bounded, replaced, and proven | [docs/PORT_HISTORY.md](docs/PORT_HISTORY.md) |
-| Which routines are mapped, and how | [docs/ROUTINE_MAP.md](docs/ROUTINE_MAP.md) |
-| Which routines are admitted natively | [docs/NATIVE_REGISTRY.md](docs/NATIVE_REGISTRY.md) |
-| Which natural routes are already screened | [docs/ROUTE_SCREENING.md](docs/ROUTE_SCREENING.md) |
-| Which seams stay emulated, and why | [docs/RETAINED_ASSEMBLY_SEAMS.md](docs/RETAINED_ASSEMBLY_SEAMS.md) |
-| How to validate a slice | [docs/NATIVE_PORT_WORKFLOW.md](docs/NATIVE_PORT_WORKFLOW.md) |
-| Where to profile the next candidate | [docs/NATIVE_FALLBACK_HOTSPOTS.md](docs/NATIVE_FALLBACK_HOTSPOTS.md) |
-| What removing Beetle actually requires | [docs/EMULATOR_ELIMINATION.md](docs/EMULATOR_ELIMINATION.md) |
-| How the remaining gameplay becomes readable native C++ | [docs/NATIVE_RUNTIME_MIGRATION.md](docs/NATIVE_RUNTIME_MIGRATION.md) |
-| The full historical log through 2026-08-23 | [docs/PROGRESS_ARCHIVE.md](docs/PROGRESS_ARCHIVE.md) |
+| What the port has bounded, replaced, and proven | [docs/PORT_HISTORY.md](PORT_HISTORY.md) |
+| Which routines are mapped, and how | [docs/ROUTINE_MAP.md](ROUTINE_MAP.md) |
+| Which routines are admitted natively | [docs/NATIVE_REGISTRY.md](NATIVE_REGISTRY.md) |
+| Which natural routes are already screened | [docs/ROUTE_SCREENING.md](ROUTE_SCREENING.md) |
+| Which seams stay emulated, and why | [docs/RETAINED_ASSEMBLY_SEAMS.md](RETAINED_ASSEMBLY_SEAMS.md) |
+| How to validate a slice | [docs/NATIVE_PORT_WORKFLOW.md](NATIVE_PORT_WORKFLOW.md) |
+| Where to profile the next candidate | [docs/NATIVE_FALLBACK_HOTSPOTS.md](NATIVE_FALLBACK_HOTSPOTS.md) |
+| What removing Beetle actually requires | [docs/EMULATOR_ELIMINATION.md](EMULATOR_ELIMINATION.md) |
+| How the remaining gameplay becomes readable native C++ | [docs/NATIVE_RUNTIME_MIGRATION.md](NATIVE_RUNTIME_MIGRATION.md) |
+| The full historical log through 2026-08-23 | [docs/PROGRESS_ARCHIVE.md](PROGRESS_ARCHIVE.md) |
 
 ## Milestones
 
@@ -82,7 +82,7 @@ The emulator is the oracle during migration and may remain as an optional
 compatibility mode; it is not required by the completed native gameplay path.
 The implementation order is actor scheduler/collision/physics, actor families
 and table rules, score/UI, music/audio scheduling, then scene/startup flow.
-See [docs/NATIVE_RUNTIME_MIGRATION.md](docs/NATIVE_RUNTIME_MIGRATION.md).
+See [docs/NATIVE_RUNTIME_MIGRATION.md](NATIVE_RUNTIME_MIGRATION.md).
 
 The last generated registry measurement (2026-08-22, 593 admissions) runs
 **699,919,959 of 1,292,371,731 master cycles natively on the canonical
@@ -92,7 +92,7 @@ and zero abandoned transcripts, against a state census byte-identical to the
 assembly-only baseline. The `00:E85D` square root, `05:6D27` live orbit arm,
 `00:E5BC` multiply partial, and `02:4FC4` side-gate deadline check were
 admitted after that measurement, so the current registry holds 598 entries;
-regenerate [docs/NATIVE_REGISTRY.md](docs/NATIVE_REGISTRY.md)
+regenerate [docs/NATIVE_REGISTRY.md](NATIVE_REGISTRY.md)
 with the next canonical census.
 
 `00:E728` unsigned fixed-point division is now also admitted from the long
@@ -113,14 +113,14 @@ have no further standalone table-rule entry-and-return contract to admit, and
 the residue is documented device, block-transfer, compound-branch,
 setup/scheduler, music, and caller-owned continuation seams. Manufacturing a
 seam by splitting a known owner around its child or return is not an acceptable
-answer — see [docs/RETAINED_ASSEMBLY_SEAMS.md](docs/RETAINED_ASSEMBLY_SEAMS.md).
+answer — see [docs/RETAINED_ASSEMBLY_SEAMS.md](RETAINED_ASSEMBLY_SEAMS.md).
 
 The way through is **player-session capture**. `--capture-session` /
 `--replay-session` record a real session with per-frame work-RAM fingerprints
 and replay it deterministically. `player-session-4` reached `00:E85D-E8B2`,
 which no scripted route had ever entered, and produced the most recent
 admission. Prefer a fresh capture with the current executable over another
-scripted cadence. See [docs/ROUTE_SCREENING.md](docs/ROUTE_SCREENING.md).
+scripted cadence. See [docs/ROUTE_SCREENING.md](ROUTE_SCREENING.md).
 
 ## Active work
 
@@ -480,7 +480,7 @@ table-behavior capture: it has 1,744 calls to the short actor scan at
 `01:C539`, totaling 117,359,643 cycles and 2,379,778 writes. They retain the
 same dynamic-handler and queue-filing interior, so the whole scope remains
 assembly-backed; the current trace is recorded in
-[docs/ROUTE_SCREENING.md](docs/ROUTE_SCREENING.md). Its stored work-RAM hashes
+[docs/ROUTE_SCREENING.md](ROUTE_SCREENING.md). Its stored work-RAM hashes
 are stale under the current default registry (the normal replay first differs
 at frame 4,787), so collision-source extraction uses diagnostic mode and does
 not present that historical capture as certification.
@@ -648,7 +648,7 @@ replacement.
 
 None external. Every constraint that used to be listed here is a deliberate,
 documented seam rather than an open problem; they are collected in
-[docs/RETAINED_ASSEMBLY_SEAMS.md](docs/RETAINED_ASSEMBLY_SEAMS.md).
+[docs/RETAINED_ASSEMBLY_SEAMS.md](RETAINED_ASSEMBLY_SEAMS.md).
 
 ## Decisions locked for V1
 
@@ -682,5 +682,5 @@ Keep it short. When a slice lands:
 5. Update the date at the top.
 
 A new deliberate seam goes in
-[docs/RETAINED_ASSEMBLY_SEAMS.md](docs/RETAINED_ASSEMBLY_SEAMS.md); a screened
-route goes in [docs/ROUTE_SCREENING.md](docs/ROUTE_SCREENING.md).
+[docs/RETAINED_ASSEMBLY_SEAMS.md](RETAINED_ASSEMBLY_SEAMS.md); a screened
+route goes in [docs/ROUTE_SCREENING.md](ROUTE_SCREENING.md).

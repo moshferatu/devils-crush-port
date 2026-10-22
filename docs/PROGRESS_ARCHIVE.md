@@ -10,8 +10,8 @@ It is append-only history and is **not** maintained. For anything current, use:
 
 | Question | Document |
 | --- | --- |
-| What is the architecture and delivery plan? | [../PLAN.md](../PLAN.md) |
-| What is the state of the port right now? | [../PROGRESS.md](../PROGRESS.md) |
+| What is the architecture and delivery plan? | [PLAN.md](PLAN.md) |
+| What is the state of the port right now? | [PROGRESS.md](PROGRESS.md) |
 | What has the port bounded, replaced, and proven? | [PORT_HISTORY.md](PORT_HISTORY.md) |
 | Which routines are mapped, and how? | [ROUTINE_MAP.md](ROUTINE_MAP.md) |
 | Which natural routes have been screened already? | [ROUTE_SCREENING.md](ROUTE_SCREENING.md) |

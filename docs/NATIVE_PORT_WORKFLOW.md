@@ -3,7 +3,7 @@
 This workflow keeps routine replacement faithful while making the normal
 iteration loop fast enough to port related code as a unit. It applies to
 Milestone 4 native gameplay work; it does not weaken the release or milestone
-acceptance criteria in [PLAN.md](../PLAN.md).
+acceptance criteria in [PLAN.md](PLAN.md).
 
 ## Current priority: broaden validation beyond the zero-residue corpus
 

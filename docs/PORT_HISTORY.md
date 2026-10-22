@@ -4,8 +4,8 @@ A running record of what the native port has bounded, replaced, and proven, in
 the order it happened. This is the detail that used to live in the README; it is
 kept here so the README can stay a guide to playing the game.
 
-For the current implementation status see [../PROGRESS.md](../PROGRESS.md), for
-the architecture see [../PLAN.md](../PLAN.md), and for the validation cadence
+For the current implementation status see [PROGRESS.md](PROGRESS.md), for
+the architecture see [PLAN.md](PLAN.md), and for the validation cadence
 used during each iteration see [NATIVE_PORT_WORKFLOW.md](NATIVE_PORT_WORKFLOW.md).
 The commands that produce the artifacts quoted throughout are collected in
 [INSTRUMENTATION.md](INSTRUMENTATION.md).

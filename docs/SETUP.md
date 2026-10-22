@@ -240,7 +240,7 @@ check), the smoke tests, and the release staging layout.
 
 | | |
 | --- | --- |
-| [PROGRESS.md](../PROGRESS.md) | Current implementation status, and an index of the port's own documents |
+| [PROGRESS.md](PROGRESS.md) | Current implementation status, and an index of the port's own documents |
 | [CABINET_PREVIEW.md](CABINET_PREVIEW.md) | Cabinet host behavior, controls, and the measurements behind them |
 | [BUILD_AND_TEST.md](BUILD_AND_TEST.md) | Presets, test suites, and release staging |
 | [INSTRUMENTATION.md](INSTRUMENTATION.md) | Recording, tracing, and oracle-comparison commands |

@@ -81,7 +81,7 @@ Per-frame work-RAM, framebuffer, and audio fingerprints remain the oracle
 until the domain is complete. Exact low-level helpers may temporarily preserve
 machine-shaped arithmetic, but they must be isolated behind named operations;
 new domain code should express game intent rather than branch addresses or CPU
-registers. See [docs/NATIVE_RUNTIME_MIGRATION.md](docs/NATIVE_RUNTIME_MIGRATION.md).
+registers. See [docs/NATIVE_RUNTIME_MIGRATION.md](NATIVE_RUNTIME_MIGRATION.md).
 
 ### Progressive native routine replacement
 
@@ -230,8 +230,8 @@ Provide an interactive monitor-assignment screen and persist display identity, g
 
 Each milestone below states its scope and its exit gate only. Current status is
 in [PROGRESS.md](PROGRESS.md); the dated record of how each gate was met is in
-[docs/PORT_HISTORY.md](docs/PORT_HISTORY.md) and
-[docs/PROGRESS_ARCHIVE.md](docs/PROGRESS_ARCHIVE.md).
+[docs/PORT_HISTORY.md](PORT_HISTORY.md) and
+[docs/PROGRESS_ARCHIVE.md](PROGRESS_ARCHIVE.md).
 
 ### 1. Emulated Windows baseline — complete
 
@@ -248,7 +248,7 @@ in [PROGRESS.md](PROGRESS.md); the dated record of how each gate was met is in
   interrupt policy, and the native-vs-original shadow path, then prove the
   bridge end-to-end with one bounded routine before resuming mapping.
 - Script every behavior documented in the [USA manual](https://www.tg-16.com/contributors/bernie/Devil%27s_Crush/Devil%27s_Crush.pdf)
-  and classify all of it in [docs/COVERAGE_MANIFEST.md](docs/COVERAGE_MANIFEST.md).
+  and classify all of it in [docs/COVERAGE_MANIFEST.md](COVERAGE_MANIFEST.md).
 - **Exit:** every required state is reproducible, routines can be shadow-tested,
   and at least one faithful routine runs in replacement mode.
 
@@ -258,10 +258,10 @@ in [PROGRESS.md](PROGRESS.md); the dated record of how each gate was met is in
   system. The accepted world is 256-by-668 at source rows 20-687 of the packed
   256-by-768 envelope; rows 0-19 are the top guard, 688-720 are streamed lower
   prefetch, and 721-767 are unused tail. See
-  [docs/TABLE_BACKGROUND.md](docs/TABLE_BACKGROUND.md).
+  [docs/TABLE_BACKGROUND.md](TABLE_BACKGROUND.md).
 - Add the playfield, score DMD, backglass, display assignment, and
   bonus-stage windows described under **Cabinet profile** above. See
-  [docs/CABINET_PREVIEW.md](docs/CABINET_PREVIEW.md).
+  [docs/CABINET_PREVIEW.md](CABINET_PREVIEW.md).
 - Render every mapped actor over that background from copied SAT and
   ROM-derived descriptor metadata, retaining fixed-mechanism visuals after the
   camera leaves them.
@@ -286,9 +286,9 @@ in [PROGRESS.md](PROGRESS.md); the dated record of how each gate was met is in
 - For each domain, compare the same player captures and focused fixtures in
   the assembly, hybrid, and native-runtime modes. Preserve work-RAM, video,
   audio, input, save, and scene behavior before retiring its interpreter path.
-- Maintain [docs/NATIVE_REGISTRY.md](docs/NATIVE_REGISTRY.md) as the manifest
+- Maintain [docs/NATIVE_REGISTRY.md](NATIVE_REGISTRY.md) as the manifest
   of admitted routines, and
-  [docs/RETAINED_ASSEMBLY_SEAMS.md](docs/RETAINED_ASSEMBLY_SEAMS.md) as the
+  [docs/RETAINED_ASSEMBLY_SEAMS.md](RETAINED_ASSEMBLY_SEAMS.md) as the
   manifest of code deliberately left emulated.
 - **Exit:** normal gameplay executes through human-readable native C++ domain
   code with no HuC6280 gameplay instructions; any retained emulator path is
@@ -311,7 +311,7 @@ in [PROGRESS.md](PROGRESS.md); the dated record of how each gate was met is in
 
 ### Native-port iteration cadence
 
-Milestone 4 routine work follows [the native-port workflow](docs/NATIVE_PORT_WORKFLOW.md).
+Milestone 4 routine work follows [the native-port workflow](NATIVE_PORT_WORKFLOW.md).
 Each slice requires an incremental Release build, ROM-free core coverage in
 both configurations, and one owning-family Release ROM regression. Related
 sibling routines should share that family route and artifact rather than add
