@@ -155,6 +155,33 @@ int main(const int argc, char** const argv)
             << "\nframe32=" << digest32.sha256 << '\n';
     }
 
+    {
+        // The supported ROM is found in a folder whatever it is called; a
+        // changed copy and a copy that is not a .pce are passed over.
+        const auto folder = std::filesystem::temp_directory_path()
+            / "devils-crush-find-rom-test";
+        std::filesystem::remove_all(folder);
+        std::filesystem::create_directories(folder);
+        const auto write = [&](const char* name, const std::vector<std::byte>& bytes) {
+            std::ofstream out(folder / name, std::ios::binary);
+            out.write(
+                reinterpret_cast<const char*>(bytes.data()),
+                static_cast<std::streamsize>(bytes.size()));
+        };
+        auto changed = rom_bytes;
+        changed[0] ^= std::byte{1};
+        write("a.pce", changed);
+        write("b.bin", rom_bytes);
+        check(
+            devils_crush::rom::find_supported_rom(folder).empty(),
+            "no supported ROM in the folder");
+        write("My Copy.PCE", rom_bytes);
+        check(
+            devils_crush::rom::find_supported_rom(folder) == folder / "My Copy.PCE",
+            "supported ROM found under any name");
+        std::filesystem::remove_all(folder);
+    }
+
     if (failures == 0) {
         std::cout << "Native title-logo tests passed.\n";
         return 0;

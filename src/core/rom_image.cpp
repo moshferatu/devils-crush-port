@@ -8,6 +8,7 @@
 #include <bcrypt.h>
 
 #include <algorithm>
+#include <cwctype>
 #include <fstream>
 #include <iomanip>
 #include <limits>
@@ -255,6 +256,50 @@ ValidationResult validate_file(const std::filesystem::path& path)
     result.digests = std::move(digests);
     result.message = "Supported Devil's Crush USA ROM verified.";
     return result;
+}
+
+std::filesystem::path find_supported_rom(const std::filesystem::path& directory)
+{
+    // Only .pce files of the right size are read and hashed.
+    std::vector<std::filesystem::path> candidates;
+    std::error_code error;
+    for (std::filesystem::directory_iterator entry(directory, error), end;
+         !error && entry != end;
+         entry.increment(error)) {
+        auto extension = entry->path().extension().wstring();
+        std::transform(
+            extension.begin(),
+            extension.end(),
+            extension.begin(),
+            [](const wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+        std::error_code file_error;
+        if (extension == L".pce" && entry->is_regular_file(file_error)
+            && entry->file_size(file_error) == kSupportedRomSize) {
+            candidates.push_back(entry->path());
+        }
+    }
+    std::sort(candidates.begin(), candidates.end());
+    for (const auto& candidate : candidates) {
+        if (validate_file(candidate).supported()) return candidate;
+    }
+    return {};
+}
+
+std::filesystem::path executable_directory()
+{
+    std::wstring exe(MAX_PATH, L'\0');
+    for (;;) {
+        const DWORD n = GetModuleFileNameW(
+            nullptr, exe.data(), static_cast<DWORD>(exe.size()));
+        if (n == 0) break;
+        if (n < exe.size()) {
+            exe.resize(n);
+            return std::filesystem::path(exe).parent_path();
+        }
+        exe.resize(exe.size() * 2);
+    }
+    std::error_code error;
+    return std::filesystem::current_path(error);
 }
 
 } // namespace devils_crush::rom

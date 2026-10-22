@@ -21,7 +21,9 @@ and starts the game, then comes back when the game closes.
 It is worked by mouse, keyboard or controller: Up and Down move, Left and
 Right change a value, Enter opens a list or waits for a key to bind, Tab (or L1
 and R1) turns the tabs, Ctrl+S saves, and Ctrl+Enter, F5 or Start plays. The
-ROM can also be chosen with Browse or dropped on the window.
+ROM can also be chosen with Browse or dropped on the window. When none is
+chosen, or the one chosen is missing, the launcher and the game use the
+supported ROM from beside the executables, whatever its file is called.
 
 The launcher's icon and heading are the title screen's logo, decoded from the
 ROM at build time (`tools/make_launcher_art.cpp`), since nothing of the ROM's

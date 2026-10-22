@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "command_line.hpp"
 
+#include "devils_crush/core/rom_image.hpp"
+
 #include "proven_replace_hooks.hpp"
 #include "recording_plans.hpp"
 
@@ -122,6 +124,14 @@ namespace devils_crush::app::host {
         // The mouse's hold on the ball is not in a capture's inputs.
         options.drag_ball = options.drag_ball
             || (play.drag_ball && options.capture_session_directory.empty());
+    }
+    // Without --rom, any copy of the supported ROM beside the game will do
+    // when the one named is not there.
+    if (!overrides.rom && !options.validate_only
+        && !devils_crush::rom::validate_file(options.rom_path).supported()) {
+        auto found = devils_crush::rom::find_supported_rom(
+            devils_crush::rom::executable_directory());
+        if (!found.empty()) options.rom_path = std::move(found);
     }
     options.cabinet = overrides.cabinet.value_or(play_selected && play.cabinet);
     options.music_voice_overlay = overrides.music_overlay.value_or(

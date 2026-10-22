@@ -239,7 +239,8 @@ struct InputBindings {
 struct PlaySettings {
     // `game.rom`, as UTF-8. Empty: `Devil's Crush.pce` in the working
     // directory. A relative path is taken from the working directory, as
-    // `--rom` is.
+    // `--rom` is. When that file is not the supported ROM, any .pce beside
+    // the executable that is is used.
     std::string rom;
     // `game.cabinet`: three windows, or one (`--no-cabinet`).
     bool cabinet = true;
