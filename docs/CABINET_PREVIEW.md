@@ -18,7 +18,7 @@ Music voice overlay also defaults to on during play; disable it with
 `--no-music-voice-overlay`. Both defaults, and the ROM, the starting bonus
 stage, native or emulated code, smoothing and the nudge multiplier, can be set
 in `devils-crush.ini` instead (`game.*`, `audio.music_voice_overlay`,
-`video.smoothing`, `input.nudge_multiplier`), which is what the launcher
+`video.smoothing`, `video.borderless`, `input.nudge_multiplier`), which is what the launcher
 edits; a flag beats the file for one run. F6 toggles `video.smoothing`, and a
 cabinet session saves it on normal exit like the rotation. Cabinet mode creates
 three independent SDL windows:

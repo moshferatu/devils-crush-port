@@ -133,7 +133,9 @@ bool HostSession::open_windows()
         cabinet_mode ? 720 : 1280,
         cabinet_mode ? 1280 : 720,
         SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE
-            | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+            | SDL_WINDOW_HIGH_PIXEL_DENSITY
+            | (cabinet_config.play.borderless ? SDL_WINDOW_BORDERLESS
+                                              : SDL_WindowFlags{0}));
     if (window == nullptr) {
         report_sdl_error("SDL_CreateWindow failed");
         destroy_audio(audio);
@@ -169,6 +171,7 @@ bool HostSession::open_windows()
                 240,
                 cabinet_config.dmd,
                 host_displays,
+                cabinet_config.play.borderless,
                 dmd)) {
             std::cerr
                 << "Cabinet DMD unavailable; continuing with playfield.\n";
@@ -179,6 +182,7 @@ bool HostSession::open_windows()
                 540,
                 cabinet_config.backglass,
                 host_displays,
+                cabinet_config.play.borderless,
                 backglass)) {
             std::cerr
                 << "Cabinet backglass unavailable; continuing without it.\n";

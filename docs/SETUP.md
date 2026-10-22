@@ -47,9 +47,15 @@ devils-crush.exe --rom "D:\path\to\Devil's Crush.pce"
 
 With no options the game plays as `devils-crush.ini` says, which is
 what the launcher edits: `game.rom`, `game.cabinet`, `game.bonus_stage`,
-`game.drag_ball`, `audio.music_voice_overlay`, `video.smoothing` and
-`input.nudge_multiplier`. An option on the command line beats the file for
-that run, and a file without them plays with the defaults below.
+`game.drag_ball`, `audio.music_voice_overlay`, `video.smoothing`,
+`video.borderless` and `input.nudge_multiplier`. An option on the command
+line beats the file for that run, and a file without them plays with the
+defaults below.
+
+`video.borderless=1` (Borderless Windows in the launcher) takes the title bar
+and border off every window that is not fullscreen, for recording the
+desktop. A window without one cannot be dragged: place the windows with it
+off, or move one with the next-monitor key; each opens where it was left.
 
 Music voice overlay is also enabled by default during play. Add
 `--no-music-voice-overlay` to disable it. The existing `--cabinet` and

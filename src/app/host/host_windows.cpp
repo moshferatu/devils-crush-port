@@ -175,6 +175,7 @@ void destroy_auxiliary_window(AuxiliaryWindow& output)
     const int height,
     const devils_crush::cabinet::WindowPlacement& placement,
     const HostDisplays& displays,
+    const bool borderless,
     AuxiliaryWindow& output)
 {
     output.window = SDL_CreateWindow(
@@ -184,7 +185,8 @@ void destroy_auxiliary_window(AuxiliaryWindow& output)
         SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE
             | SDL_WINDOW_HIGH_PIXEL_DENSITY
             | SDL_WINDOW_NOT_FOCUSABLE
-            | SDL_WINDOW_ALWAYS_ON_TOP);
+            | SDL_WINDOW_ALWAYS_ON_TOP
+            | (borderless ? SDL_WINDOW_BORDERLESS : SDL_WindowFlags{0}));
     if (output.window == nullptr) {
         report_sdl_error("SDL_CreateWindow (cabinet auxiliary) failed");
         return false;

@@ -256,6 +256,10 @@ struct PlaySettings {
     bool smoothing = true;
     // `input.nudge_multiplier` (`--nudge-multiplier`), 0 to 16.
     double nudge_multiplier = 1.0;
+    // `video.borderless`: windows that are not fullscreen have no title bar
+    // or border, so they cannot be dragged; each still opens where it was
+    // left.
+    bool borderless = false;
 
     [[nodiscard]] bool operator==(const PlaySettings&) const = default;
 };

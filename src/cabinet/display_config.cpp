@@ -446,6 +446,7 @@ void append_bindings(std::string& output, const InputBindings& input)
     output += "audio.music_voice_overlay="
         + std::to_string(play.music_voice_overlay ? 1 : 0) + '\n';
     output += "video.smoothing=" + std::to_string(play.smoothing ? 1 : 0) + '\n';
+    output += "video.borderless=" + std::to_string(play.borderless ? 1 : 0) + '\n';
     output += "input.nudge_multiplier=";
     output.append(multiplier.data(), end);
     output += '\n';
@@ -500,7 +501,8 @@ void append_bindings(std::string& output, const InputBindings& input)
     return flag("game.cabinet", play.cabinet)
         && flag("game.drag_ball", play.drag_ball)
         && flag("audio.music_voice_overlay", play.music_voice_overlay)
-        && flag("video.smoothing", play.smoothing);
+        && flag("video.smoothing", play.smoothing)
+        && flag("video.borderless", play.borderless);
 }
 
 [[nodiscard]] std::uint64_t overlap_area(

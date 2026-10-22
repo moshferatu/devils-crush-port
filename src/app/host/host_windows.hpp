@@ -40,6 +40,7 @@ void destroy_auxiliary_window(AuxiliaryWindow& output);
     const int height,
     const devils_crush::cabinet::WindowPlacement& placement,
     const HostDisplays& displays,
+    bool borderless,
     AuxiliaryWindow& output);
 
 void focus_playfield_window(SDL_Window* const window);

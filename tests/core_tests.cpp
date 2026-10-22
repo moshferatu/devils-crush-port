@@ -9106,6 +9106,7 @@ void test_cabinet_display_config()
             .music_voice_overlay = false,
             .smoothing = false,
             .nudge_multiplier = 2.5,
+            .borderless = true,
         };
         const auto chosen_encoded = encode_display_config(chosen);
         const auto chosen_decoded = decode_display_config(chosen_encoded);
@@ -9123,12 +9124,13 @@ void test_cabinet_display_config()
         const auto retired = decode_display_config(to_bytes(chosen_text + "game.native=0\n"));
         check(retired && retired->play == chosen.play,
             "a file from when the game code was a setting still loads");
-        const std::array<std::pair<std::string_view, std::string_view>, 5> unreadable{{
+        const std::array<std::pair<std::string_view, std::string_view>, 6> unreadable{{
             {"game.cabinet=0\n", "game.cabinet=2\n"},
             {"game.drag_ball=1\n", "game.drag_ball=yes\n"},
             {"game.bonus_stage=4\n", "game.bonus_stage=7\n"},
             {"input.nudge_multiplier=2.5\n", "input.nudge_multiplier=17\n"},
             {"video.smoothing=0\n", "video.smoothing=off\n"},
+            {"video.borderless=1\n", "video.borderless=on\n"},
         }};
         for (const auto& [good, bad] : unreadable) {
             auto text = chosen_text;
