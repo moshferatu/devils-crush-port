@@ -13,7 +13,6 @@ It plays like the original game, with some additional features:
 * Adjustable nudge strength
 * Music keeps all of its parts while sound effects play
 * High scores are saved between sessions
-* Start the game in any bonus stage
 
 ## ROM (Required)
 
