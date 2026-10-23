@@ -14,6 +14,8 @@ It plays like the original game, with some additional features:
 * Music keeps all of its parts while sound effects play
 * High scores are saved between sessions
 
+[Gameplay Video](https://www.youtube.com/watch?v=rJagHoVgweo)
+
 ## ROM (Required)
 
 No game data is included.
