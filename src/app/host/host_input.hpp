@@ -6,17 +6,45 @@
 namespace devils_crush::app::host {
 
 // Scancodes resolved once from the configured key names, so the per-frame
-// read stays an array lookup.
+// read stays an array lookup. A pad input's list may also name controller
+// inputs ("PinOne Button 3", "Hat 1 Left"); those are split out into
+// `pad_joystick`.
 struct ResolvedKeyBindings {
     std::array<
         std::vector<SDL_Scancode>,
         devils_crush::cabinet::kPadButtonCount>
         pads;
     std::vector<SDL_Scancode> launch;
+    std::array<
+        std::vector<devils_crush::input::JoystickInput>,
+        devils_crush::cabinet::kPadButtonCount>
+        pad_joystick;
+    std::vector<devils_crush::input::JoystickInput> launch_joystick;
     std::vector<SDL_Scancode> smoothing;
     std::vector<SDL_Scancode> next_window;
     std::vector<SDL_Scancode> fullscreen;
     std::vector<SDL_Scancode> next_monitor;
+};
+
+// The controllers whose inputs a pad input may be bound to. Read through
+// SDL's joystick layer rather than its gamepad layer for the same reason as
+// the plunger: a pinball board in its own controller mode is an anonymous HID
+// device that no gamepad mapping covers. Every connected controller is held
+// open, but only while some pad input names a controller input.
+struct JoystickInputs {
+    struct Device {
+        SDL_Joystick* joystick = nullptr;
+        SDL_JoystickID id = 0;
+        std::string name;
+    };
+    std::vector<Device> devices;
+    bool wanted = false;
+
+    void refresh();
+    void remove(SDL_JoystickID id);
+    void close();
+    [[nodiscard]] bool pressed(
+        const devils_crush::input::JoystickInput& binding) const;
 };
 
 [[nodiscard]] bool key_is_bound(
@@ -32,6 +60,7 @@ void resolve_opposing_directions(
 
 [[nodiscard]] InputFrame read_input(
     SDL_Gamepad* gamepad,
+    const JoystickInputs& joysticks,
     const ResolvedKeyBindings& bindings,
     const bool ball_in_launcher,
     const devils_crush::cabinet::FlipperInputs& flippers,

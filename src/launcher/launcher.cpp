@@ -41,7 +41,12 @@
 //   * A key binding is set by pressing it. Enter (or South) waits for the next
 //     key and adds it to the row; Backspace (or West) takes the last one off,
 //     and a chip's x takes that one. Every key can be bound, Escape included,
-//     so a wait for a key is ended by a click or by five seconds.
+//     so a wait for a key is ended by a click or by five seconds. A pad
+//     input's row also takes a controller's button, d-pad direction or
+//     trigger -- a pinball board in its own controller mode, say, or an
+//     arcade stick -- written as the controller's name and the input
+//     ("PinOne Button 3", "Hat 1 Left", "Axis 5+"). So a controller's button
+//     binds rather than ending the wait there.
 //   * A path, a name or a number is typed after Enter or a click. The ROM can
 //     also be chosen with Browse, or dropped on the window.
 //   * Ctrl+S saves; Ctrl+Enter, F5 or Start plays; Escape quits at once,
@@ -61,6 +66,7 @@
 #include "devils_crush/cabinet/display_config.hpp"
 #include "devils_crush/core/data_files.hpp"
 #include "devils_crush/core/rom_image.hpp"
+#include "devils_crush/input/joystick_input.hpp"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -242,8 +248,8 @@ constexpr Choice cabinet_choices[] = {{1, "Cabinet (3 Windows)"}, {0, "Desktop (
 template <typename T, std::size_t N>
 constexpr int count_of(const T (&)[N]) { return static_cast<int>(N); }
 
-enum { TAB_GAME, TAB_VIDEO, TAB_AUDIO, TAB_CABINET, TAB_KEYBOARD, TAB_MISC, TAB_COUNT };
-constexpr const char* tab_names[TAB_COUNT] = {"Game", "Video", "Audio", "Cabinet", "Keyboard", "Misc."};
+enum { TAB_GAME, TAB_VIDEO, TAB_AUDIO, TAB_CONTROLS, TAB_CABINET, TAB_MISC, TAB_COUNT };
+constexpr const char* tab_names[TAB_COUNT] = {"Game", "Video", "Audio", "Controls", "Cabinet", "Misc."};
 constexpr int kRowsMax = 64;
 std::array<std::vector<Row>, TAB_COUNT> rows;
 
@@ -335,17 +341,17 @@ void build_rows()
         "How much movement counts as a release, as a percentage of the travel.");
 
     static const char key_help[] =
-        "What to map the TurboGrafx-16 / PC Engine controller button to on the keyboard.";
-    add_head(TAB_KEYBOARD, "Buttons", key_help);
+        "What to map the TurboGrafx-16 / PC Engine controller button to.";
+    add_head(TAB_CONTROLS, "Buttons", key_help);
     for (std::size_t i = 0; i < kPadButtonCount; ++i) {
-        add(TAB_KEYBOARD, Row{K_KEYS, bind(G_KEYS, static_cast<int>(i)), pad_rows[i], key_help});
+        add(TAB_CONTROLS, Row{K_KEYS, bind(G_KEYS, static_cast<int>(i)), pad_rows[i], key_help});
     }
     static const char window_help[] = "What to map the hotkey to on the keyboard.";
-    add_head(TAB_KEYBOARD, "Hotkeys", window_help);
-    add(TAB_KEYBOARD, Row{K_KEYS, bind(G_HOTKEY, 0), "Toggle Smoothing", window_help});
-    add(TAB_KEYBOARD, Row{K_KEYS, bind(G_HOTKEY, 1), "Select Next Window", window_help});
-    add(TAB_KEYBOARD, Row{K_KEYS, bind(G_HOTKEY, 2), "Toggle Fullscreen", window_help});
-    add(TAB_KEYBOARD, Row{K_KEYS, bind(G_HOTKEY, 3), "Move Window to Next Monitor", window_help});
+    add_head(TAB_CONTROLS, "Hotkeys", window_help);
+    add(TAB_CONTROLS, Row{K_KEYS, bind(G_HOTKEY, 0), "Toggle Smoothing", window_help});
+    add(TAB_CONTROLS, Row{K_KEYS, bind(G_HOTKEY, 1), "Select Next Window", window_help});
+    add(TAB_CONTROLS, Row{K_KEYS, bind(G_HOTKEY, 2), "Toggle Fullscreen", window_help});
+    add(TAB_CONTROLS, Row{K_KEYS, bind(G_HOTKEY, 3), "Move Window to Next Monitor", window_help});
 }
 
 devils_crush::cabinet::WindowPlacement& placement_of(DisplayConfig& c, int id)
@@ -737,6 +743,13 @@ struct RomCheck {
     bool supported = false;
 };
 
+// One controller axis where it sat when a wait for a binding began.
+struct AxisRest {
+    SDL_JoystickID id;
+    int axis;
+    int value;
+};
+
 struct Ui {
     SDL_Window* win = nullptr;
     SDL_Renderer* ren = nullptr;
@@ -761,6 +774,11 @@ struct Ui {
     bool capturing = false;
     int capture_row = 0;
     Uint64 capture_end = 0;
+    Uint64 capture_start_ns = 0;
+    // A gamepad event from before this is the press a binding just took.
+    Uint64 pad_quiet_before_ns = 0;
+    std::vector<AxisRest> axis_rest;
+    std::array<bool, SDL_GAMEPAD_AXIS_COUNT> pad_axis_settling{};
     int dragging = -1;
     // The open dropdown's row (-1: none), the option lit in it, the first one
     // in sight, and where its box was drawn.
@@ -984,6 +1002,43 @@ bool game_closed(DWORD& code)
     return true;
 }
 
+// Every controller the launcher holds, opened and let go of together.
+//
+// Windows hands a DirectInput controller -- which a pinball board in its own
+// controller mode usually is -- to one program at a time: SDL opens it for
+// exclusive use. The launcher stays running while the game plays, so it lets
+// go of every controller before the game starts and takes them back once the
+// game has closed. Held, the board would send the game nothing at all: not its
+// buttons, its plunger or its nudge.
+void open_controllers()
+{
+    int count = 0;
+    SDL_JoystickID* ids = SDL_GetJoysticks(&count);
+    for (int i = 0; ids != nullptr && i < count; ++i) {
+        if (SDL_IsGamepad(ids[i])) {
+            if (SDL_GetGamepadFromID(ids[i]) == nullptr) SDL_OpenGamepad(ids[i]);
+        } else if (SDL_GetJoystickFromID(ids[i]) == nullptr) {
+            SDL_OpenJoystick(ids[i]);
+        }
+    }
+    SDL_free(ids);
+}
+
+void close_controllers()
+{
+    int count = 0;
+    SDL_JoystickID* ids = SDL_GetJoysticks(&count);
+    for (int i = 0; ids != nullptr && i < count; ++i) {
+        // SDL counts opens, so each is closed until it is gone.
+        for (int n = 0; n < 16; ++n) {
+            if (SDL_Gamepad* pad = SDL_GetGamepadFromID(ids[i])) SDL_CloseGamepad(pad);
+            else if (SDL_Joystick* joy = SDL_GetJoystickFromID(ids[i])) SDL_CloseJoystick(joy);
+            else break;
+        }
+    }
+    SDL_free(ids);
+}
+
 // Never the launcher's end: it waits for the game, out of sight.
 bool launch()
 {
@@ -1011,9 +1066,11 @@ bool launch()
     STARTUPINFOW si{};
     si.cb = sizeof si;
     PROCESS_INFORMATION pi{};
+    close_controllers();
     // The game is a console program; started from here it gets no terminal.
     if (!CreateProcessW(exe.c_str(), cmd.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, ui.base.c_str(), &si, &pi)) {
         say("Could not start %s (error %lu)", utf8_of(exe).c_str(), static_cast<unsigned long>(GetLastError()));
+        open_controllers();
         return false;
     }
     CloseHandle(pi.hThread);
@@ -1104,6 +1161,8 @@ void edit_insert(std::string_view s)
     ui.caret += s.size();
 }
 
+void note_axis_rest();
+
 void start_capture(int i)
 {
     const Row* r = row_at(i);
@@ -1111,7 +1170,9 @@ void start_capture(int i)
     ui.capturing = true;
     ui.capture_row = i;
     ui.capture_end = SDL_GetTicks() + 5000;
+    ui.capture_start_ns = SDL_GetTicksNS();
     ui.status.clear();
+    note_axis_rest();
 }
 
 void remove_binding(int i, int which)
@@ -1129,6 +1190,14 @@ void remove_binding(int i, int which)
         changed();
 }
 
+void add_binding(const Row* r, const std::string& name)
+{
+    auto& list = keys_of(ui.cfg, r->id);
+    for (const auto& k : list)
+        if (same_ignoring_case(k, name)) { say("%s is already bound here.", name.c_str()); return; }
+    if (list.size() < kKeysMax) { list.push_back(name); changed(); }
+}
+
 void capture_key(SDL_Scancode sc)
 {
     const Row* r = row_at(ui.capture_row);
@@ -1138,10 +1207,70 @@ void capture_key(SDL_Scancode sc)
         say("That key has no name devils-crush.ini can hold.");
         return;
     }
-    auto& list = keys_of(ui.cfg, r->id);
-    for (const auto& k : list)
-        if (same_ignoring_case(k, name)) { say("%s is already bound here.", name); return; }
-    if (list.size() < kKeysMax) { list.emplace_back(name); changed(); }
+    add_binding(r, name);
+}
+
+// Only the pad inputs are read from a controller: the hotkeys are acted on as
+// key presses.
+bool takes_buttons(const Row* r) { return r != nullptr && (r->id >> 8) == G_KEYS; }
+
+// A binding the game will act on: a key SDL knows by that name, or on a pad
+// input's row, a controller input.
+bool binds_something(const Row& r, const std::string& name)
+{
+    if (SDL_GetScancodeFromName(name.c_str()) != SDL_SCANCODE_UNKNOWN) return true;
+    return takes_buttons(&r) && devils_crush::input::parse_joystick_input(name).has_value();
+}
+
+// A controller's button, hat direction or axis, moved while one was waited
+// for. The controller's full name goes in rather than a guess at a shorter
+// one, so a board with another controller beside it is still told apart. The
+// game matches it as part of the name, so it can be shortened by hand.
+void capture_control(SDL_JoystickID id, devils_crush::input::JoystickInput control)
+{
+    const Row* r = row_at(ui.capture_row);
+    ui.capturing = false;
+    ui.pad_quiet_before_ns = SDL_GetTicksNS();
+    if (!takes_buttons(r)) { say("Hotkeys take keyboard keys only."); return; }
+    const char* name = SDL_GetJoystickNameForID(id);
+    control.device = name != nullptr ? trimmed(name) : std::string();
+    // A name that itself ends like a binding ("... Button 2") would read back
+    // as a different one, so such a controller is bound by number alone.
+    if (devils_crush::input::parse_joystick_input(control.device)) control.device.clear();
+    add_binding(r, devils_crush::input::format_joystick_input(control));
+}
+
+// Where every open controller's axes were when the wait began. A trigger
+// rests at one end of its axis rather than the middle, so an axis is taken
+// for how far it moves from here, not for where it is.
+void note_axis_rest()
+{
+    ui.axis_rest.clear();
+    int count = 0;
+    SDL_JoystickID* ids = SDL_GetJoysticks(&count);
+    for (int i = 0; ids != nullptr && i < count; ++i) {
+        SDL_Joystick* joy = SDL_GetJoystickFromID(ids[i]);
+        if (joy == nullptr) continue;
+        const int axes = SDL_GetNumJoystickAxes(joy);
+        for (int a = 0; a < axes; ++a) ui.axis_rest.push_back({ids[i], a, SDL_GetJoystickAxis(joy, a)});
+    }
+    SDL_free(ids);
+}
+
+// An axis moved far enough to bind, as the direction it moved.
+int axis_moved(SDL_JoystickID id, int axis, int value)
+{
+    using devils_crush::input::kAxisCaptured;
+    const auto rest = std::find_if(ui.axis_rest.begin(), ui.axis_rest.end(),
+                                   [&](const AxisRest& a) { return a.id == id && a.axis == axis; });
+    if (rest == ui.axis_rest.end()) {
+        // A controller plugged in during the wait: this is its rest.
+        ui.axis_rest.push_back({id, axis, value});
+        return 0;
+    }
+    if (value > kAxisCaptured && value - rest->value > kAxisCaptured) return 1;
+    if (value < -kAxisCaptured && rest->value - value > kAxisCaptured) return -1;
+    return 0;
 }
 
 void move_focus(int d)
@@ -1553,13 +1682,14 @@ void draw_bindings(int i, const Row& r, float x, float y, float h, bool focused)
     std::vector<bool> bad;
     for (const auto& k : keys_of(ui.cfg, r.id)) {
         names.push_back(k);
-        bad.push_back(SDL_GetScancodeFromName(k.c_str()) == SDL_SCANCODE_UNKNOWN);
+        bad.push_back(!binds_something(r, k));
     }
     draw_chips(i, names, bad, cx, y, h);
     if (ui.capturing && ui.capture_row == i) {
         const auto left = static_cast<int>((ui.capture_end - SDL_GetTicks() + 999) / 1000);
         char msg[64];
-        std::snprintf(msg, sizeof msg, "Press a key... %d", left);
+        std::snprintf(msg, sizeof msg,
+                      takes_buttons(&r) ? "Press a key or button... %d" : "Press a key... %d", left);
         const float cw = text_width(ui.body, msg) + L(20);
         outline(cx, y, cw, h, L(2), C_ACCENT);
         text(ui.ren, ui.body, cx + L(10), y + (h - ui.body.height) / 2, msg, C_ACCENT);
@@ -1711,8 +1841,10 @@ void draw()
             else if (!rom.supported) warn = "Not the supported ROM: " + utf8_of(rom.resolved);
         } else if (r->kind == K_KEYS) {
             for (const auto& k : keys_of(ui.cfg, r->id))
-                if (SDL_GetScancodeFromName(k.c_str()) == SDL_SCANCODE_UNKNOWN) {
-                    warn = "'" + k + "' is not the name of a key, and binds nothing.";
+                if (!binds_something(*r, k)) {
+                    warn = takes_buttons(r)
+                        ? "'" + k + "' is not the name of a key or controller input, and binds nothing."
+                        : "'" + k + "' is not the name of a key, and binds nothing.";
                     break;
                 }
         }
@@ -1867,8 +1999,12 @@ bool handle(const SDL_Event& e)
     ui.redraw = true;
     switch (e.type) {
     case SDL_EVENT_JOYSTICK_AXIS_MOTION:
-    case SDL_EVENT_JOYSTICK_BALL_MOTION:
     case SDL_EVENT_JOYSTICK_HAT_MOTION:
+        if (ui.capturing) break;
+        ui.redraw = false;
+        return false;
+    case SDL_EVENT_JOYSTICK_BALL_MOTION:
+    case SDL_EVENT_JOYSTICK_BUTTON_UP:
     case SDL_EVENT_GAMEPAD_TOUCHPAD_MOTION:
     case SDL_EVENT_GAMEPAD_SENSOR_UPDATE:
         ui.redraw = false;
@@ -1881,14 +2017,50 @@ bool handle(const SDL_Event& e)
     default: break;
     }
 
-    // A key being waited for takes what comes first.
+    // A key being waited for takes what comes first. A controller's input is
+    // taken from its joystick event -- a button, a hat (a d-pad or an arcade
+    // stick's lever) or an axis (a trigger or a stick) -- which every
+    // controller sends, mapped gamepad or not: a cabinet board can be either,
+    // and SDL treats some as gamepads. Its gamepad event, which may arrive
+    // before or after, is dropped, as is a press that began before the wait
+    // did -- the South press that started it.
     if (ui.capturing) {
-        if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+        using devils_crush::input::JoystickInput;
+        if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
             ui.capturing = false;
             return false;
         }
         if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) capture_key(e.key.scancode);
+        if (e.type == SDL_EVENT_JOYSTICK_BUTTON_DOWN && e.jbutton.timestamp > ui.capture_start_ns)
+            capture_control(e.jbutton.which, {{}, JoystickInput::Kind::button, e.jbutton.button, 0});
+        // A diagonal is not taken: it is two directions, and a binding is one.
+        if (e.type == SDL_EVENT_JOYSTICK_HAT_MOTION && e.jhat.timestamp > ui.capture_start_ns) {
+            const int v = e.jhat.value;
+            if (v == SDL_HAT_UP || v == SDL_HAT_RIGHT || v == SDL_HAT_DOWN || v == SDL_HAT_LEFT)
+                capture_control(e.jhat.which, {{}, JoystickInput::Kind::hat, e.jhat.hat, v});
+        }
+        if (e.type == SDL_EVENT_JOYSTICK_AXIS_MOTION) {
+            if (const int d = axis_moved(e.jaxis.which, e.jaxis.axis, e.jaxis.value); d != 0) {
+                ui.pad_axis_settling.fill(true);
+                capture_control(e.jaxis.which, {{}, JoystickInput::Kind::axis, e.jaxis.axis, d});
+            }
+        }
         if (e.type != SDL_EVENT_QUIT) return false;
+    }
+    if ((e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN || e.type == SDL_EVENT_GAMEPAD_BUTTON_UP)
+        && e.gbutton.timestamp <= ui.pad_quiet_before_ns) {
+        ui.redraw = false;
+        return false;
+    }
+    // A stick or trigger just bound is still held: it does not steer the
+    // launcher until it has been let go.
+    if (e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION && e.gaxis.axis < SDL_GAMEPAD_AXIS_COUNT) {
+        bool& settling = ui.pad_axis_settling[e.gaxis.axis];
+        if (settling && std::abs(e.gaxis.value) < 8000) settling = false;
+        if (settling) {
+            ui.redraw = false;
+            return false;
+        }
     }
 
     switch (e.type) {
@@ -1963,6 +2135,19 @@ bool handle(const SDL_Event& e)
         return false;
     case SDL_EVENT_GAMEPAD_REMOVED:
         if (SDL_Gamepad* pad = SDL_GetGamepadFromID(e.gdevice.which)) SDL_CloseGamepad(pad);
+        return false;
+    // Any other controller is opened only so that a button on it can be bound.
+    case SDL_EVENT_JOYSTICK_ADDED:
+        if (!SDL_IsGamepad(e.jdevice.which)) SDL_OpenJoystick(e.jdevice.which);
+        ui.redraw = false;
+        return false;
+    case SDL_EVENT_JOYSTICK_REMOVED:
+        if (SDL_Joystick* joy = SDL_GetJoystickFromID(e.jdevice.which); joy != nullptr && !SDL_IsGamepad(e.jdevice.which))
+            SDL_CloseJoystick(joy);
+        ui.redraw = false;
+        return false;
+    case SDL_EVENT_JOYSTICK_BUTTON_DOWN:
+        ui.redraw = false;
         return false;
     case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
         if (ui.editing) commit_edit();
@@ -2236,6 +2421,7 @@ int main(int argc, char* argv[])
                 // so that the next Play does not put back what it replaced.
                 // Nothing here has changed since Play saved.
                 load();
+                open_controllers();
                 if (code != 0) say("The game stopped with exit code %lu.", static_cast<unsigned long>(code));
                 draw();
                 SDL_RenderPresent(ui.ren);

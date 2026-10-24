@@ -17,6 +17,7 @@
 #include "devils_crush/emulation/pce_runtime.hpp"
 #include "devils_crush/emulation/routine_replay_corpus.hpp"
 #include "devils_crush/input/ball_drag.hpp"
+#include "devils_crush/input/joystick_input.hpp"
 #include "devils_crush/input/pce_pad.hpp"
 #include "devils_crush/input/plunger.hpp"
 #include "devils_crush/native_runtime/actor_collision_geometry.hpp"
@@ -8403,6 +8404,45 @@ void test_cabinet_state()
 void test_nudge()
 {
     using namespace devils_crush::input;
+    {
+        using devils_crush::input::JoystickInput;
+        using devils_crush::input::format_joystick_input;
+        using devils_crush::input::parse_joystick_input;
+        using Kind = JoystickInput::Kind;
+        check(parse_joystick_input("PinOne Button 3") == JoystickInput{"PinOne", Kind::button, 2, 0},
+              "a named controller button is read, numbered from 1");
+        check(parse_joystick_input("  pinone   BUTTON 1 ") == JoystickInput{"pinone", Kind::button, 0, 0},
+              "controller button names ignore case and spacing");
+        check(parse_joystick_input("Button 128") == JoystickInput{"", Kind::button, 127, 0},
+              "a button with no controller name matches any controller");
+        check(parse_joystick_input("Xbox Controller Hat 1 Left")
+                  == JoystickInput{"Xbox Controller", Kind::hat, 0, kHatLeft},
+              "a hat direction is read");
+        check(parse_joystick_input("hat 2 up") == JoystickInput{"", Kind::hat, 1, kHatUp},
+              "a hat direction ignores case");
+        check(parse_joystick_input("DualSense Edge Axis 5+") == JoystickInput{"DualSense Edge", Kind::axis, 4, 1}
+                  && parse_joystick_input("Axis 1-") == JoystickInput{"", Kind::axis, 0, -1},
+              "an axis direction is read");
+        for (const auto& input : {JoystickInput{"PinOne", Kind::button, 2, 0}, JoystickInput{"", Kind::button, 0, 0},
+                                  JoystickInput{"Pad", Kind::hat, 0, kHatDown}, JoystickInput{"Pad", Kind::hat, 3, kHatRight},
+                                  JoystickInput{"Pad (v2)", Kind::axis, 4, 1}, JoystickInput{"", Kind::axis, 1, -1}}) {
+            check(parse_joystick_input(format_joystick_input(input)) == input,
+                  "controller inputs are written as they are read");
+        }
+        check(format_joystick_input({"PinOne", Kind::button, 2, 0}) == "PinOne Button 3"
+                  && format_joystick_input({"", Kind::hat, 0, kHatLeft}) == "Hat 1 Left"
+                  && format_joystick_input({"Pad", Kind::axis, 4, 1}) == "Pad Axis 5+",
+              "controller inputs are written in the documented form");
+        for (const auto* text : {"Left Shift", "Return", "Keypad 1", "Keypad +", "Keypad -", "Page Up", "Up",
+                                 "Button", "Button 0", "Button 129", "Button3", "PinOneButton 3", "Button -1",
+                                 "Hat 1", "Hat Up", "Hat 0 Up", "Hat 1 Sideways", "Axis 1", "Axis+", "Axis 0+",
+                                 "PadAxis 1+", "F12", ""}) {
+            check(!parse_joystick_input(text), "a key name is not a controller input");
+        }
+        check(axis_pressed(1, 20000) && !axis_pressed(1, 10000) && !axis_pressed(1, -32768)
+                  && axis_pressed(-1, -20000) && !axis_pressed(-1, 20000),
+              "an axis is pressed past half way in its direction");
+    }
     check(parse_nudge_multiplier("2.5") == 2.5, "fractional nudge force accepted");
     check(parse_nudge_multiplier("0") == 0 && parse_nudge_multiplier("16") == 16,
           "nudge multiplier boundaries accepted");
@@ -9075,6 +9115,18 @@ void test_cabinet_display_config()
         check(
             rebound_decoded && *rebound_decoded == rebound,
             "rebound inputs round trip through the cabinet configuration");
+
+        // A controller button is held in the same list as the keys, and has
+        // to come back as the same text: a board's name can have commas or
+        // parentheses in it.
+        auto with_buttons = source;
+        with_buttons.input[PadButton::left] = {"Left Shift", "PinOne (v2), rev B Button 3"};
+        with_buttons.input[PadButton::one] = {"Return", "Button 12", "Xbox Controller Hat 1 Left", "DualSense Axis 5+"};
+        const auto buttons_decoded =
+            decode_display_config(encode_display_config(with_buttons));
+        check(
+            buttons_decoded && *buttons_decoded == with_buttons,
+            "controller buttons round trip through the cabinet configuration");
 
         // A configuration written before bindings existed must keep its
         // display assignment rather than being rejected wholesale.

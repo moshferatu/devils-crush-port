@@ -14,8 +14,8 @@ and starts the game, then comes back when the game closes.
 | Game | The ROM, and cabinet or desktop mode |
 | Video | Smoothing, and for the cabinet: the playfield rotation, and which monitor each window is on and whether it is fullscreen |
 | Audio | The music voice overlay, and skipping the perfect bonus stage's cut-off jingle |
+| Controls | The keys (or controller buttons, d-pads and triggers) for each PC Engine pad input, and the window hotkeys |
 | Cabinet | The nudge board and nudge strength, and the analog plunger |
-| Keyboard | The keys for each PC Engine pad input, and the window hotkeys |
 | Misc. | A starting bonus stage, and dragging the ball with the mouse |
 
 It is worked by mouse, keyboard or controller: Up and Down move, Left and
@@ -106,7 +106,7 @@ others, and it is not available with `--capture-session`.
 | F12 / Shift+F12 | Move the selected window to the next / previous connected monitor (cabinet mode) |
 | Escape | Quit |
 
-F6, F10, F11 and F12 can be rebound on the launcher's Keyboard tab.
+F6, F10, F11 and F12 can be rebound on the launcher's Controls tab.
 
 The flag `--emulate-only` can be used to execute the original assembly instead, should that be necessary.
 
@@ -120,8 +120,11 @@ The flag `--emulate-only` can be used to execute the original assembly instead, 
 | Space | Nudge |
 
 The first available SDL gamepad works too, and extra mappings can be supplied
-in `gamecontrollerdb.txt`. Keys are rebindable on the launcher's Keyboard tab or under `input.` in
-`devils-crush.ini`. The flippers are the pad's Left and Right, and the keys
+in `gamecontrollerdb.txt`. Keys are rebindable on the launcher's Controls tab or under `input.` in
+`devils-crush.ini`. A pad input can also be bound to any controller's button,
+d-pad direction or trigger -- a PinOne left in its controller mode rather than
+keyboard mode, an arcade stick, or a gamepad whose fixed layout does not suit:
+choose the input's + on the Controls tab and press it. The flippers are the pad's Left and Right, and the keys
 bound to I launch from the shooter — see
 [docs/CABINET_PREVIEW.md](CABINET_PREVIEW.md#controls) for the full
 mapping.

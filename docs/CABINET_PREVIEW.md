@@ -865,6 +865,56 @@ cabinet, or in the launcher, holds on a desktop too. It never writes the file,
 and it ignores the file's artwork rotation, which belongs to the cabinet's
 playfield monitor.
 
+### Controller inputs
+
+A cabinet board can also send its buttons as a joystick rather than as
+keystrokes. A PinOne in its controller mode does, and VPX, Pinball FX and
+PinUP Popper are commonly set up to read it that way, so switching it to
+keyboard mode for this game alone would break them. SDL usually has no
+gamepad mapping for such a board, so the fixed gamepad layout never sees it,
+and where it does -- an Xbox arcade stick, say -- that layout is not how the
+cabinet is wired. Instead a pad input's list may name a controller input
+beside its keys:
+
+```ini
+input.left=Left Shift,Left,PinOne Button 1
+input.right=Right Shift,Right,PinOne Button 2
+input.one=Return,PinOne Button 3
+input.up=Up,Xbox Controller Hat 1 Up
+input.two=Space,DualSense Edge Axis 5+
+```
+
+A controller reports three kinds of input, and each is written its own way,
+after the controller's name:
+
+| Entry | Is | Typically |
+| --- | --- | --- |
+| `Button 3` | a button, counted from 1 as Windows' controller panel counts them | face buttons, shoulders, a board's flipper buttons |
+| `Hat 1 Left` | one direction of a hat: `Up`, `Right`, `Down` or `Left` | a d-pad, or an arcade stick's lever |
+| `Axis 5+` | an axis pushed past half way, `+` or `-` | a trigger (L2/R2, LT/RT), or a stick |
+
+The name is matched as a case-insensitive part of the controller's name, the
+same as the plunger and nudge device, so it survives the controller being
+unplugged or renumbered; with no name (`Button 3`) any controller matches. No
+SDL key name ends like these entries, so the two kinds cannot be confused. A
+trigger rests at one end of its axis, so `+` on a trigger reads as pressed
+three quarters of the way down; a stick rests in the middle and reads as
+pressed half way out.
+
+On the launcher's Controls tab, a pad input's + waits for a key *or* any
+controller input, and writes the controller's full name. A hat's diagonal is
+not taken, since a binding is one direction, and an axis is taken for how far
+it moves from where it was when the wait began, so a trigger resting at the
+end of its travel is not mistaken for a press. Any controller can be bound,
+including one SDL treats as a gamepad: binding a controller's inputs by name
+takes it off the fixed layout above, so it does only what it is bound to. The
+window hotkeys take keys only.
+
+An input bound to I is a launch key on the same terms as a key bound to I.
+The game holds every connected controller open through SDL's joystick layer,
+but only when some pad input names a controller input, and it reads them in
+desktop mode as well as on the cabinet.
+
 ### An existing file pins its bindings
 
 Because the file is rewritten in full, the first normal exit writes every
@@ -1004,7 +1054,7 @@ instead, starting at the playfield, and shows it nowhere:
 
 These keys and F6 are `input.next_window`, `input.fullscreen`,
 `input.next_monitor` and `input.smoothing` in `devils-crush.ini`, lists of key
-names like the pad's, and the launcher's Keyboard tab edits them. The DMD and
+names like the pad's, and the launcher's Controls tab edits them. The DMD and
 backglass can also be dragged, or placed with the launcher's monitor settings.
 
 The host atomically stores `devils-crush.ini` on normal exit. Each role records the SDL display name, a fallback window

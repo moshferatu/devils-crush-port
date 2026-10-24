@@ -267,6 +267,10 @@ void HostSession::handle_events()
                 plunger,
                 cabinet_config.input.plunger);
             nudge.refresh();
+            if (event.type == SDL_EVENT_JOYSTICK_REMOVED) {
+                joystick_inputs.remove(event.jdevice.which);
+            }
+            joystick_inputs.refresh();
         } else if (
             event.type == SDL_EVENT_AUDIO_DEVICE_REMOVED
             || event.type == SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED) {
@@ -331,6 +335,7 @@ void HostSession::run_due_frames(
             && apply_plunger_draw(runtime, rod);
         auto input = read_input(
             gamepad,
+            joystick_inputs,
             key_bindings,
             ball_in_launcher,
             devils_crush::cabinet::flipper_inputs(),

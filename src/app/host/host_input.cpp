@@ -64,12 +64,27 @@ constexpr std::array<PadBinding, devils_crush::cabinet::kPadButtonCount>
             SDL_GAMEPAD_BUTTON_DPAD_LEFT},
     };
 
+// `controls` collects the controller inputs in the list. Without it -- the
+// window keys, which are read as key presses rather than held -- a controller
+// input is reported and skipped.
 [[nodiscard]] std::vector<SDL_Scancode> resolve_key_names(
     const std::vector<std::string>& names,
-    const std::string_view field)
+    const std::string_view field,
+    std::vector<devils_crush::input::JoystickInput>* const controls = nullptr)
 {
     std::vector<SDL_Scancode> resolved;
     for (const auto& name : names) {
+        if (auto control = devils_crush::input::parse_joystick_input(name)) {
+            if (controls != nullptr) {
+                controls->push_back(std::move(*control));
+            } else {
+                std::cerr << "Controller input \"" << name
+                          << "\" bound to input." << field
+                          << "; only pad inputs take controller inputs, "
+                             "so ignoring it.\n";
+            }
+            continue;
+        }
         const auto scancode = SDL_GetScancodeFromName(name.c_str());
         if (scancode == SDL_SCANCODE_UNKNOWN) {
             // An unusable name is the one thing a hand-edited file gets wrong
@@ -162,14 +177,16 @@ struct ProbedAxis {
 {
     ResolvedKeyBindings resolved;
     for (const auto& binding : kPadBindings) {
-        resolved.pads[static_cast<std::size_t>(binding.pad)] =
-            resolve_key_names(
-                bindings[binding.pad],
-                devils_crush::cabinet::pad_button_field(binding.pad));
+        const auto index = static_cast<std::size_t>(binding.pad);
+        resolved.pads[index] = resolve_key_names(
+            bindings[binding.pad],
+            devils_crush::cabinet::pad_button_field(binding.pad),
+            &resolved.pad_joystick[index]);
     }
-    resolved.launch =
-        resolved.pads[static_cast<std::size_t>(
-            devils_crush::cabinet::PadButton::one)];
+    const auto one =
+        static_cast<std::size_t>(devils_crush::cabinet::PadButton::one);
+    resolved.launch = resolved.pads[one];
+    resolved.launch_joystick = resolved.pad_joystick[one];
     resolved.smoothing =
         resolve_key_names(bindings.smoothing_keys, "smoothing");
     resolved.next_window =
@@ -200,6 +217,7 @@ void resolve_opposing_directions(
 
 [[nodiscard]] InputFrame read_input(
     SDL_Gamepad* gamepad,
+    const JoystickInputs& joysticks,
     const ResolvedKeyBindings& bindings,
     const bool ball_in_launcher,
     const devils_crush::cabinet::FlipperInputs& flippers,
@@ -212,28 +230,63 @@ void resolve_opposing_directions(
     // nothing else. Suppressing its other pad inputs is the point: a launch
     // key that also sends Run would pause the game at the moment it is
     // pressed.
+    // A controller input bound to I is a launch key on the same terms.
+    const auto button_held =
+        [&joysticks](const devils_crush::input::JoystickInput& control) {
+            return joysticks.pressed(control);
+        };
     const bool launching = ball_in_launcher
-        && std::ranges::any_of(
-               bindings.launch,
-               [keys](const SDL_Scancode scancode) {
-                   return keys[scancode];
-               });
+        && (std::ranges::any_of(
+                bindings.launch,
+                [keys](const SDL_Scancode scancode) {
+                    return keys[scancode];
+                })
+            || std::ranges::any_of(bindings.launch_joystick, button_held));
     const auto suppressed = [&](const SDL_Scancode scancode) {
         return ball_in_launcher
             && std::ranges::find(bindings.launch, scancode)
             != bindings.launch.end();
     };
+    const auto button_suppressed =
+        [&](const devils_crush::input::JoystickInput& button) {
+            return ball_in_launcher
+                && std::ranges::find(bindings.launch_joystick, button)
+                != bindings.launch_joystick.end();
+        };
+    // A gamepad whose inputs are bound by name is read only through those
+    // bindings. A cabinet board or an arcade stick can be a mapped gamepad as
+    // well, and its inputs would otherwise also send the fixed layout's.
+    const char* const gamepad_name = gamepad != nullptr
+        ? SDL_GetJoystickName(SDL_GetGamepadJoystick(gamepad))
+        : nullptr;
+    const bool fixed_layout = gamepad != nullptr
+        && std::ranges::none_of(
+            bindings.pad_joystick,
+            [gamepad_name](const auto& buttons) {
+                return std::ranges::any_of(
+                    buttons,
+                    [gamepad_name](
+                        const devils_crush::input::JoystickInput& button) {
+                        return !button.device.empty()
+                            && name_contains(gamepad_name, button.device);
+                    });
+            });
 
     for (const auto& binding : kPadBindings) {
-        const auto& scancodes =
-            bindings.pads[static_cast<std::size_t>(binding.pad)];
+        const auto index = static_cast<std::size_t>(binding.pad);
+        const auto& scancodes = bindings.pads[index];
         const bool pressed =
             std::ranges::any_of(
                 scancodes,
                 [&](const SDL_Scancode scancode) {
                     return keys[scancode] && !suppressed(scancode);
                 })
-            || (gamepad != nullptr
+            || std::ranges::any_of(
+                bindings.pad_joystick[index],
+                [&](const devils_crush::input::JoystickInput& button) {
+                    return button_held(button) && !button_suppressed(button);
+                })
+            || (fixed_layout
                 && SDL_GetGamepadButton(gamepad, binding.gamepad));
         set_button(input.player_one, binding.button, pressed);
     }
@@ -335,6 +388,89 @@ void handle_gamepad_device_event(
         return folded;
     };
     return fold(name).find(fold(needle)) != std::string::npos;
+}
+
+void JoystickInputs::refresh()
+{
+    if (!wanted) {
+        return;
+    }
+    int count = 0;
+    SDL_JoystickID* const ids = SDL_GetJoysticks(&count);
+    if (ids == nullptr) {
+        return;
+    }
+    for (int index = 0; index < count; ++index) {
+        const auto id = ids[index];
+        if (std::ranges::any_of(
+                devices,
+                [id](const Device& device) { return device.id == id; })) {
+            continue;
+        }
+        SDL_Joystick* const joystick = SDL_OpenJoystick(id);
+        if (joystick == nullptr) {
+            report_sdl_error("SDL_OpenJoystick failed");
+            continue;
+        }
+        const char* const name = SDL_GetJoystickName(joystick);
+        devices.push_back(
+            Device{joystick, id, name != nullptr ? name : ""});
+        std::cout << "Controller inputs: " << devices.back().name << " ("
+                  << SDL_GetNumJoystickButtons(joystick) << " buttons, "
+                  << SDL_GetNumJoystickHats(joystick) << " hats, "
+                  << SDL_GetNumJoystickAxes(joystick) << " axes)\n";
+    }
+    SDL_free(ids);
+}
+
+void JoystickInputs::remove(const SDL_JoystickID id)
+{
+    const auto found = std::ranges::find_if(
+        devices,
+        [id](const Device& device) { return device.id == id; });
+    if (found == devices.end()) {
+        return;
+    }
+    SDL_CloseJoystick(found->joystick);
+    devices.erase(found);
+}
+
+void JoystickInputs::close()
+{
+    for (const auto& device : devices) {
+        SDL_CloseJoystick(device.joystick);
+    }
+    devices.clear();
+}
+
+bool JoystickInputs::pressed(
+    const devils_crush::input::JoystickInput& binding) const
+{
+    using Kind = devils_crush::input::JoystickInput::Kind;
+    return std::ranges::any_of(
+        devices,
+        [&binding](const Device& device) {
+            if (!name_contains(device.name.c_str(), binding.device)) {
+                return false;
+            }
+            SDL_Joystick* const joystick = device.joystick;
+            switch (binding.kind) {
+            case Kind::button:
+                return binding.index < SDL_GetNumJoystickButtons(joystick)
+                    && SDL_GetJoystickButton(joystick, binding.index);
+            case Kind::hat:
+                return binding.index < SDL_GetNumJoystickHats(joystick)
+                    && (SDL_GetJoystickHat(joystick, binding.index)
+                        & binding.direction)
+                    != 0;
+            case Kind::axis:
+                return binding.index < SDL_GetNumJoystickAxes(joystick)
+                    && devils_crush::input::axis_pressed(
+                        binding.direction,
+                        SDL_GetJoystickAxis(joystick, binding.index));
+            }
+            return false;
+        });
 }
 
 void close_plunger(PlungerDevice& plunger)

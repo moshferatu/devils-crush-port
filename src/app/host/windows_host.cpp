@@ -227,6 +227,10 @@ void HostSession::prepare()
     nudge.binding = cabinet_config.input.nudge;
     nudge.binding.enabled = nudge.binding.enabled && cabinet_mode;
     nudge.refresh();
+    joystick_inputs.wanted = std::ranges::any_of(
+        key_bindings.pad_joystick,
+        [](const auto& buttons) { return !buttons.empty(); });
+    joystick_inputs.refresh();
     backglass_logo =
         cabinet_rom
         ? devils_crush::render::TitleLogoAnimation::decode(
@@ -550,6 +554,7 @@ int HostSession::close()
     }
     close_plunger(plunger);
     nudge.close();
+    joystick_inputs.close();
     save_current_cabinet_config();
     destroy_stage(dmd_stage);
     destroy_source(dmd_source);

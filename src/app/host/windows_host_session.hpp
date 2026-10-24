@@ -59,6 +59,7 @@ struct HostSession {
     SDL_Gamepad* gamepad = nullptr;
     PlungerDevice plunger;
     NudgeDevice nudge;
+    JoystickInputs joystick_inputs;
 
     // What is drawn, and from what.
     SourceTexture source;

@@ -20,6 +20,7 @@
 #include "devils_crush/emulation/playfield_collision_adapter.hpp"
 #include "devils_crush/emulation/routine_replay_corpus.hpp"
 #include "devils_crush/input/ball_drag.hpp"
+#include "devils_crush/input/joystick_input.hpp"
 #include "devils_crush/input/plunger.hpp"
 #include "devils_crush/native_runtime/actor_collision_scan.hpp"
 #include "devils_crush/native_runtime/actor_scheduler.hpp"
