@@ -37,10 +37,10 @@ int main(int argc, char** argv)
         if (!skipped || skipped->output_registers.program_counter != 0x7CC4U
             || skipped->return_instruction != RoutineKey{3U, 0x7CC4U}) return 1;
         if (skipping.star_jingle(jingle, ram)) return 1; // one-shot
-        jingle.routine = {5U, 0xA984U};
+        jingle.routine = {5U, 0x6984U};
         skipping.perfect_result();
         const auto other = skipping.star_jingle(jingle, ram);
-        if (!other || other->output_registers.program_counter != 0xA987U) return 1;
+        if (!other || other->output_registers.program_counter != 0x6987U) return 1;
     }
     std::ifstream file(argv[1], std::ios::binary);
     std::vector<std::byte> rom(393216U);

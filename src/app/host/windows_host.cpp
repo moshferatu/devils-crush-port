@@ -21,6 +21,8 @@
 #include "trace_writers.hpp"
 #include "windows_host_session.hpp"
 
+#include "devils_crush/cabinet/bonus_ball_color.hpp"
+
 namespace devils_crush::app::host {
 
 int run_windows_host(
@@ -415,6 +417,11 @@ void HostSession::install_game_hooks()
     }
     if (host_ok && !music_transition.install(runtime)) {
         std::cerr << "Could not install the bonus music transition.\n";
+        running = false;
+        host_ok = false;
+    }
+    if (host_ok && !devils_crush::cabinet::install_bonus_ball_color(runtime)) {
+        std::cerr << "Could not keep the bonus ball color in the launcher.\n";
         running = false;
         host_ok = false;
     }

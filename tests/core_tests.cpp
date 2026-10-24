@@ -7,6 +7,7 @@
 #include "devils_crush/core/data_files.hpp"
 #include "devils_crush/core/high_score_table.hpp"
 #include "devils_crush/cpu/huc6280_idle_skip.hpp"
+#include "devils_crush/cabinet/bonus_ball_color.hpp"
 #include "devils_crush/cabinet/cabinet_state.hpp"
 #include "devils_crush/cabinet/display_config.hpp"
 #include "devils_crush/cabinet/dmd_layout.hpp"
@@ -12112,6 +12113,32 @@ void test_viewport_motion()
         "sprite halves past sixteen on a line are cut from their pieces");
 }
 
+void test_bonus_ball_color()
+{
+    using devils_crush::cabinet::keep_bonus_ball_color;
+    std::array<std::byte, 8192> ram{};
+    ram[0xD38U] = std::byte{3};  // multiplier running
+    ram[0x1D00U] = std::byte{0x80};
+    check(!keep_bonus_ball_color(ram) && ram[0x1D00U] == std::byte{0x80},
+        "a ball in play keeps the palette the star chose");
+    ram[0x53U] = std::byte{0x08};
+    check(keep_bonus_ball_color(ram) && ram[0x1D00U] == std::byte{0x8A},
+        "a serving ball keeps the first bonus color");
+    check(!keep_bonus_ball_color(ram), "an already colored ball is left alone");
+    ram[0x53U] = std::byte{0x02};
+    ram[0xCDU] = std::byte{2};
+    ram[0x1D00U] = std::byte{0x80};
+    check(keep_bonus_ball_color(ram) && ram[0x1D00U] == std::byte{0x8E},
+        "a lost ball keeps its level's bonus color");
+    ram[0xCDU] = std::byte{3};
+    ram[0x1D00U] = std::byte{0x80};
+    check(!keep_bonus_ball_color(ram), "an unknown bonus level is left alone");
+    ram[0xCDU] = std::byte{0};
+    ram[0xD38U] = std::byte{0};
+    check(!keep_bonus_ball_color(ram) && ram[0x1D00U] == std::byte{0x80},
+        "the ball turns silver once the bonus ends");
+}
+
 void test_dmd_attract_transition()
 {
     using devils_crush::cabinet::DmdPanel;
@@ -22783,6 +22810,7 @@ int main()
     test_text_tile_write();
     test_dmd_text_layout();
     test_dmd_attract_transition();
+    test_bonus_ball_color();
     test_dmd_extra_ball_keeps_ball_number();
     test_dmd_name_entry();
     test_table_motion();

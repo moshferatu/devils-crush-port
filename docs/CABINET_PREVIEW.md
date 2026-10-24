@@ -1195,13 +1195,23 @@ return at `01:C204` and suppresses that second audio call only when table
 return already resumed music for the pending star. Ordinary star resumes
 and returns without a perfect result retain their normal behavior.
 
-The star's jingle (command 8 at `03:7CC1`, or `05:A984` for the bank-5 star)
+The star's jingle (command 8 at `03:7CC1`, or `05:6984` for the bank-5 star)
 starts about 97 frames after the perfect result sets the star pending at
 `04:46A2`, once the bonus stage has faded to black. Table entry starts the
 table theme 26 frames later, as the table appears, and cuts the jingle off.
 With `audio.skip_perfect_jingle` (the default during play) the cabinet skips
 that one call when it follows a perfect result. An ordinary star's jingle
 still plays.
+
+The same star controller keeps the perfect result's score multiplier
+(`$2D38`) for about 60 seconds and paints the ball in the bonus palette for
+level `$CD` (`03:7D4A`). While the ball is lost (`$53.1`) or waiting in the
+Devil Shooter (`$53.3`), the original paints it silver, and the bonus color
+returns only after the launch. The cabinet keeps the bonus color the whole
+time. It observes the instruction after each palette choice (`03:7CF3` and
+`03:7D2D`, or `05:69B6` and `05:69F0` for the bank-5 star) and changes only
+the ball's sprite palette at `$3D00`. The timer and multiplier are left as
+they are, and the ball still turns silver when the bonus ends.
 
 `dc_rom_music_overlay` compares original PSG writes and every RAM snapshot
 with the overlay enabled and disabled, exercises the bonus-6 and game-over

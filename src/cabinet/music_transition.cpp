@@ -6,7 +6,7 @@ namespace {
 constexpr emulation::RoutineKey kPerfectResult{4U, 0x46A2U};
 constexpr emulation::RoutineKey kTableReturn{1U, 0xC204U};
 constexpr emulation::RoutineKey kStarJingle{3U, 0x7CC1U};      // JSR $C087
-constexpr emulation::RoutineKey kOtherStarJingle{5U, 0xA984U}; // JSR $C087
+constexpr emulation::RoutineKey kOtherStarJingle{5U, 0x6984U}; // JSR $C087
 constexpr emulation::RoutineKey kStarResume{3U, 0x7CF6U};      // JSR $C090
 
 bool star_pending(std::span<const std::byte> ram) noexcept

@@ -100,6 +100,7 @@ add_library(
     src/native_runtime/giant_face_helmet_capture.cpp
     src/native_runtime/giant_face_helmet_scheduler.cpp
     src/native_runtime/giant_face_scheduler.cpp
+    src/cabinet/bonus_ball_color.cpp
     src/cabinet/cabinet_state.cpp
     src/cabinet/display_config.cpp
     src/cabinet/dmd_font.cpp

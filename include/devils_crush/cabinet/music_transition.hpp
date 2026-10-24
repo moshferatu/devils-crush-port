@@ -20,7 +20,7 @@ public:
     void perfect_result() noexcept { perfect_pending_ = true; }
     // Table return finished (01:C204).
     void table_return(std::span<const std::byte> ram) noexcept;
-    // The star's jingle (03:7CC1 or 05:A984).
+    // The star's jingle (03:7CC1 or 05:6984).
     std::optional<emulation::RoutineReplacement> star_jingle(
         const emulation::RoutineEntry& entry, std::span<const std::byte> ram);
     // The star's resume after its wait (03:7CF6).
