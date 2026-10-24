@@ -444,7 +444,8 @@ int main(const int argc, char* argv[])
             options.native_gameplay_bootstrap_shadow,
             options.nudge_multiplier,
             false,
-            options.drag_ball);
+            options.drag_ball,
+            options.skip_perfect_jingle);
         const bool save_succeeded =
             save_backup_ram(*runtime, kBackupRamPath);
         return host_result == EXIT_SUCCESS && save_succeeded

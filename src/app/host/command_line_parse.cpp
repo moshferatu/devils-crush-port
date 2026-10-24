@@ -804,6 +804,10 @@ parse_logical_address_range(const std::string_view text)
         } else if (argument == "--no-music-voice-overlay") {
             options.music_voice_overlay = false;
             overrides.music_overlay = false;
+        } else if (argument == "--skip-perfect-jingle") {
+            overrides.skip_perfect_jingle = true;
+        } else if (argument == "--no-skip-perfect-jingle") {
+            overrides.skip_perfect_jingle = false;
         } else if (argument == "--report-psg-coverage") {
             options.report_psg_coverage = true;
         } else if (argument == "--emulated-vdc") {

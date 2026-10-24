@@ -18,7 +18,7 @@ Music voice overlay also defaults to on during play; disable it with
 `--no-music-voice-overlay`. Both defaults, and the ROM, the starting bonus
 stage, native or emulated code, smoothing and the nudge multiplier, can be set
 in `devils-crush.ini` instead (`game.*`, `audio.music_voice_overlay`,
-`video.smoothing`, `video.borderless`, `input.nudge_multiplier`), which is what the launcher
+`audio.skip_perfect_jingle`, `video.smoothing`, `video.borderless`, `input.nudge_multiplier`), which is what the launcher
 edits; a flag beats the file for one run. F6 toggles `video.smoothing`, and a
 cabinet session saves it on normal exit like the rotation. Cabinet mode creates
 three independent SDL windows:
@@ -1195,10 +1195,19 @@ return at `01:C204` and suppresses that second audio call only when table
 return already resumed music for the pending star. Ordinary star resumes
 and returns without a perfect result retain their normal behavior.
 
+The star's jingle (command 8 at `03:7CC1`, or `05:A984` for the bank-5 star)
+starts about 97 frames after the perfect result sets the star pending at
+`04:46A2`, once the bonus stage has faded to black. Table entry starts the
+table theme 26 frames later, as the table appears, and cuts the jingle off.
+With `audio.skip_perfect_jingle` (the default during play) the cabinet skips
+that one call when it follows a perfect result. An ordinary star's jingle
+still plays.
+
 `dc_rom_music_overlay` compares original PSG writes and every RAM snapshot
 with the overlay enabled and disabled, exercises the bonus-6 and game-over
 music commands, and checks that the perfect-result transition starts table
-music once while preserving score, ball position, and gameplay flags.
+music once, with the jingle kept and with it skipped, while preserving score,
+ball position, and gameplay flags.
 
 ## One rendered layer, measured against the emulator
 

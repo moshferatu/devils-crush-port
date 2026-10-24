@@ -13,7 +13,7 @@ and starts the game, then comes back when the game closes.
 | --- | --- |
 | Game | The ROM, and cabinet or desktop mode |
 | Video | Smoothing, and for the cabinet: the playfield rotation, and which monitor each window is on and whether it is fullscreen |
-| Audio | The music voice overlay |
+| Audio | The music voice overlay, and skipping the perfect bonus stage's cut-off jingle |
 | Cabinet | The nudge board and nudge strength, and the analog plunger |
 | Keyboard | The keys for each PC Engine pad input, and the window hotkeys |
 | Misc. | A starting bonus stage, and dragging the ball with the mouse |
@@ -47,8 +47,8 @@ devils-crush.exe --rom "D:\path\to\Devil's Crush.pce"
 
 With no options the game plays as `devils-crush.ini` says, which is
 what the launcher edits: `game.rom`, `game.cabinet`, `game.bonus_stage`,
-`game.drag_ball`, `audio.music_voice_overlay`, `video.smoothing`,
-`video.borderless` and `input.nudge_multiplier`. An option on the command
+`game.drag_ball`, `audio.music_voice_overlay`, `audio.skip_perfect_jingle`,
+`video.smoothing`, `video.borderless` and `input.nudge_multiplier`. An option on the command
 line beats the file for that run, and a file without them plays with the
 defaults below.
 
@@ -62,6 +62,12 @@ Music voice overlay is also enabled by default during play. Add
 `--music-voice-overlay` flags still explicitly enable their features.
 Diagnostic recordings retain their reference defaults; `--emulated-psg`
 also disables the default overlay because it requires the native PSG.
+
+After a perfect bonus stage, the original game starts a short jingle while
+the screen fades to black and cuts it off as the table appears. During play
+that jingle is skipped by default (Skip Perfect Jingle in the launcher,
+`audio.skip_perfect_jingle`). Add `--no-skip-perfect-jingle` to keep it, or
+`--skip-perfect-jingle` to skip it in a diagnostic run.
 
 To start a session directly in one of the six bonus stages, add
 `--bonus-stage` with a stage number from 1 through 6. This works in both

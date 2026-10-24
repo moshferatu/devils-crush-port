@@ -19,6 +19,7 @@ int run_windows_host(
     const bool native_gameplay_bootstrap_shadow = false,
     const double nudge_multiplier = 1.0,
     const bool presentation_check = false,
-    const bool drag_ball = false);
+    const bool drag_ball = false,
+    const bool skip_perfect_jingle = false);
 
 } // namespace devils_crush::app::host

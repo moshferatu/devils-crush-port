@@ -25,6 +25,22 @@ int main(int argc, char** argv)
         transition.table_return(ram);
         ram[0x55U] = std::byte{6};
         if (transition.finish_star(entry, ram)) return 1; // another stage
+        RoutineEntry jingle;
+        jingle.routine = {3U, 0x7CC1U};
+        ram[0x55U] = std::byte{0};
+        transition.perfect_result();
+        if (transition.star_jingle(jingle, ram)) return 1; // setting off
+        devils_crush::cabinet::MusicTransition skipping(true);
+        if (skipping.star_jingle(jingle, ram)) return 1; // ordinary star
+        skipping.perfect_result();
+        const auto skipped = skipping.star_jingle(jingle, ram);
+        if (!skipped || skipped->output_registers.program_counter != 0x7CC4U
+            || skipped->return_instruction != RoutineKey{3U, 0x7CC4U}) return 1;
+        if (skipping.star_jingle(jingle, ram)) return 1; // one-shot
+        jingle.routine = {5U, 0xA984U};
+        skipping.perfect_result();
+        const auto other = skipping.star_jingle(jingle, ram);
+        if (!other || other->output_registers.program_counter != 0xA987U) return 1;
     }
     std::ifstream file(argv[1], std::ios::binary);
     std::vector<std::byte> rom(393216U);
@@ -38,7 +54,9 @@ int main(int argc, char** argv)
     unsigned bonus_six_differences = 0;
     std::size_t game_over_sample = 0;
     unsigned game_over_differences = 0;
-    for (unsigned pass = 0; pass < 3; ++pass) {
+    // Pass 0: original. Pass 1: overlay. Pass 2: transition, jingle kept.
+    // Pass 3: transition, jingle skipped.
+    for (unsigned pass = 0; pass < 4; ++pass) {
         auto runtime = create_pce_runtime();
         if (!runtime->set_native_psg(true)
             || (pass && !runtime->set_music_voice_overlay(true, rom))
@@ -46,6 +64,8 @@ int main(int argc, char** argv)
         std::size_t write_index = 0;
         bool mismatch = false;
         unsigned table_starts = 0U;
+        unsigned jingles = 0U;
+        unsigned early_star_frames = 0U;
         if (!runtime->set_bus_write_observer([&](const ObservedBusWrite& w) {
             if (w.physical_bank == 0xFFU && w.logical_address >= 0x800U
                 && w.logical_address <= 0x809U) {
@@ -58,21 +78,10 @@ int main(int argc, char** argv)
             }
             if (w.instruction == RoutineKey{0x45U, 0x4BCCU}
                 && w.frame_number > 2400U && w.frame_number < 3600U && w.value == 1U) ++table_starts;
+            if (w.instruction == RoutineKey{0x45U, 0x4BCCU} && w.value == 8U) ++jingles;
         })) return 1;
-        devils_crush::cabinet::MusicTransition transition;
-        if (pass == 2) {
-            if (!runtime->install_execution_hook({
-                    .routine = {1U, 0xC204U}, .mode = HookMode::observe,
-                    .callback = [&](const RoutineEntry&) {
-                        transition.table_return(runtime->export_work_ram());
-                    },
-                }) || !runtime->install_execution_hook({
-                    .routine = {3U, 0x7CF6U}, .mode = HookMode::replace,
-                    .replacement_callback = [&](const RoutineEntry& entry, std::span<const std::byte> ram) {
-                        return transition.finish_star(entry, ram);
-                    },
-                })) return 1;
-        }
+        devils_crush::cabinet::MusicTransition transition(pass == 3);
+        if (pass >= 2 && !transition.install(*runtime)) return 1;
         if (!runtime->install_execution_hook({
             .routine = {0U, 0xECFDU}, .mode = HookMode::observe,
             .callback = [&](const RoutineEntry& entry) {
@@ -135,18 +144,27 @@ int main(int argc, char** argv)
             if (pass == 0) baseline.insert(baseline.end(), ram.begin(), ram.end());
             else if (pass == 1 && !std::equal(ram.begin(), ram.end(),
                 baseline.begin() + static_cast<std::ptrdiff_t>((frame - 1U) * 8192U))) return 1;
-            if (pass == 2) {
+            if (pass >= 2) {
                 for (const auto offset : {0x53U, 0x55U, 0xCCU, 0xD52U,
                     0x205U, 0x20CU, 0x213U, 0x1180U, 0x1200U, 0x1300U, 0x1380U}) {
                     if (ram[offset] != baseline[(frame - 1U) * 8192U + offset]) {
-                        std::cerr << "Transition changed gameplay at frame " << frame << '\n'; return 1;
+                        // Without the jingle's driver work the star's wait
+                        // ends a few frames sooner; nothing else may move.
+                        if (pass == 3 && offset == 0xCCU && ram[offset] == std::byte{0}
+                            && ++early_star_frames <= 4U) continue;
+                        std::cerr << "Transition changed gameplay at frame " << frame
+                            << " (pass " << pass << ", $" << std::hex << offset << std::dec << ")\n";
+                        return 1;
                     }
                 }
             }
         }
         if (mismatch || writes.empty() || (pass == 1 && write_index != writes.size())) return 1;
-        if (table_starts != (pass == 2 ? 1U : 2U)) {
+        if (table_starts != (pass >= 2 ? 1U : 2U)) {
             std::cerr << "Unexpected table starts: " << table_starts << '\n'; return 1;
+        }
+        if (jingles != (pass == 3 ? 0U : 1U)) {
+            std::cerr << "Unexpected perfect jingles: " << jingles << '\n'; return 1;
         }
     }
     std::cout << "Overlay preserves 6000 RAM frames and " << writes.size()

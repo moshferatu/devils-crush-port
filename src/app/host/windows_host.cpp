@@ -36,7 +36,8 @@ int run_windows_host(
     const bool native_gameplay_bootstrap_shadow,
     const double nudge_multiplier,
     const bool presentation_check,
-    const bool drag_ball)
+    const bool drag_ball,
+    const bool skip_perfect_jingle)
 {
     HostSession session{
         .runtime = runtime,
@@ -53,6 +54,7 @@ int run_windows_host(
         .presentation_check = presentation_check,
         .drag_ball = drag_ball,
     };
+    session.music_transition.set_skip_perfect_jingle(skip_perfect_jingle);
     if (!session.open_windows()) {
         return EXIT_FAILURE;
     }
@@ -411,18 +413,7 @@ void HostSession::install_game_hooks()
         running = false;
         host_ok = false;
     }
-    if (host_ok && (!runtime.install_execution_hook({
-            .routine = {1U, 0xC204U}, .mode = HookMode::observe,
-            .callback = [this](const RoutineEntry&) {
-                music_transition.table_return(runtime.export_work_ram());
-            },
-        }) || !runtime.install_execution_hook({
-            .routine = {3U, 0x7CF6U}, .mode = HookMode::replace,
-            .replacement_callback = [this](const RoutineEntry& entry,
-                const std::span<const std::byte> ram) {
-                return music_transition.finish_star(entry, ram);
-            },
-        }))) {
+    if (host_ok && !music_transition.install(runtime)) {
         std::cerr << "Could not install the bonus music transition.\n";
         running = false;
         host_ok = false;

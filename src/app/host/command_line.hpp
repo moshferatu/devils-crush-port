@@ -54,6 +54,9 @@ struct CommandLine {
     // A cheat for testing the table: the left mouse button carries the ball
     // over the playfield.
     bool drag_ball = false;
+    // Leaves out the perfect bonus stage's cut-off jingle on the way back to
+    // the table. Normal play takes it from devils-crush.ini.
+    bool skip_perfect_jingle = false;
     // Records an interactive, power-on play session as exact per-frame pad
     // masks plus the runtime coverage artifacts needed to rank new code.
     std::filesystem::path capture_session_directory;
@@ -351,6 +354,7 @@ struct CommandLine {
 struct CommandLineOverrides {
     std::optional<bool> cabinet;
     std::optional<bool> music_overlay;
+    std::optional<bool> skip_perfect_jingle;
     bool rom = false;
     bool bonus_stage = false;
     bool nudge_multiplier = false;

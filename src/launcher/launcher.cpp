@@ -208,7 +208,7 @@ enum Setting {
     S_ROM, S_CABINET, S_BONUS_STAGE, S_DRAG_BALL,
     S_SMOOTHING, S_BORDERLESS, S_ROTATION, S_FULLSCREEN_PLAYFIELD, S_FULLSCREEN_DMD, S_FULLSCREEN_BACKGLASS,
     S_MONITOR_PLAYFIELD, S_MONITOR_DMD, S_MONITOR_BACKGLASS,
-    S_OVERLAY,
+    S_OVERLAY, S_SKIP_JINGLE,
     S_NUDGE_STRENGTH, S_NUDGE_ENABLED, S_NUDGE_DEVICE, S_NUDGE_X, S_NUDGE_Y, S_NUDGE_THRESHOLD,
     S_NUDGE_RELEASE, S_NUDGE_COOLDOWN,
     S_PLUNGER_DEVICE, S_PLUNGER_AXIS, S_PLUNGER_REST, S_PLUNGER_DRAWN, S_PLUNGER_DEADZONE,
@@ -297,6 +297,8 @@ void build_rows()
 
     add_choice(TAB_AUDIO, S_OVERLAY, "Music Voice Overlay", on_off, 2,
         "Whether to play music where the original game wouldn't due to limited sound channels.");
+    add_choice(TAB_AUDIO, S_SKIP_JINGLE, "Skip Perfect Jingle", on_off, 2,
+        "Whether to leave out the jingle the original game cuts off when returning to the table after a perfect bonus stage.");
 
     static const char nudge_help[] =
         "Whether to use an accelerometer, such as the one inside a PinOne controller, for nudging.";
@@ -473,6 +475,7 @@ int setting_get(DisplayConfig& c, int id)
     case S_MONITOR_DMD:
     case S_MONITOR_BACKGLASS: return monitor_get(c, id);
     case S_OVERLAY: return c.play.music_voice_overlay;
+    case S_SKIP_JINGLE: return c.play.skip_perfect_jingle;
     case S_NUDGE_STRENGTH: return static_cast<int>(std::lround(c.play.nudge_multiplier * 10.0));
     case S_NUDGE_ENABLED: return n.enabled;
     case S_NUDGE_X: return n.axis_x;
@@ -507,6 +510,7 @@ void setting_set(DisplayConfig& c, int id, int v)
     case S_MONITOR_DMD:
     case S_MONITOR_BACKGLASS: monitor_set(c, id, v); break;
     case S_OVERLAY: c.play.music_voice_overlay = v != 0; break;
+    case S_SKIP_JINGLE: c.play.skip_perfect_jingle = v != 0; break;
     case S_NUDGE_STRENGTH: c.play.nudge_multiplier = v / 10.0; break;
     case S_NUDGE_ENABLED: n.enabled = v != 0; break;
     case S_NUDGE_X: n.axis_x = v; break;

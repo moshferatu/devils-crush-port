@@ -252,6 +252,10 @@ struct PlaySettings {
     bool drag_ball = false;
     // `audio.music_voice_overlay` (`--no-music-voice-overlay`).
     bool music_voice_overlay = true;
+    // `audio.skip_perfect_jingle` (`--no-skip-perfect-jingle`): after a
+    // perfect bonus stage, leave out the jingle the original game starts
+    // during the fade back to the table and cuts off as the table appears.
+    bool skip_perfect_jingle = true;
     // `video.smoothing`: what F6 toggles, and F6 is remembered here.
     bool smoothing = true;
     // `input.nudge_multiplier` (`--nudge-multiplier`), 0 to 16.

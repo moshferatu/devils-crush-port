@@ -9104,6 +9104,7 @@ void test_cabinet_display_config()
             .bonus_stage = 4U,
             .drag_ball = true,
             .music_voice_overlay = false,
+            .skip_perfect_jingle = false,
             .smoothing = false,
             .nudge_multiplier = 2.5,
             .borderless = true,
@@ -9124,8 +9125,9 @@ void test_cabinet_display_config()
         const auto retired = decode_display_config(to_bytes(chosen_text + "game.native=0\n"));
         check(retired && retired->play == chosen.play,
             "a file from when the game code was a setting still loads");
-        const std::array<std::pair<std::string_view, std::string_view>, 6> unreadable{{
+        const std::array<std::pair<std::string_view, std::string_view>, 7> unreadable{{
             {"game.cabinet=0\n", "game.cabinet=2\n"},
+            {"audio.skip_perfect_jingle=0\n", "audio.skip_perfect_jingle=no\n"},
             {"game.drag_ball=1\n", "game.drag_ball=yes\n"},
             {"game.bonus_stage=4\n", "game.bonus_stage=7\n"},
             {"input.nudge_multiplier=2.5\n", "input.nudge_multiplier=17\n"},

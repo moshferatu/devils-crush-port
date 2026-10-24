@@ -445,6 +445,8 @@ void append_bindings(std::string& output, const InputBindings& input)
     output += "game.drag_ball=" + std::to_string(play.drag_ball ? 1 : 0) + '\n';
     output += "audio.music_voice_overlay="
         + std::to_string(play.music_voice_overlay ? 1 : 0) + '\n';
+    output += "audio.skip_perfect_jingle="
+        + std::to_string(play.skip_perfect_jingle ? 1 : 0) + '\n';
     output += "video.smoothing=" + std::to_string(play.smoothing ? 1 : 0) + '\n';
     output += "video.borderless=" + std::to_string(play.borderless ? 1 : 0) + '\n';
     output += "input.nudge_multiplier=";
@@ -501,6 +503,7 @@ void append_bindings(std::string& output, const InputBindings& input)
     return flag("game.cabinet", play.cabinet)
         && flag("game.drag_ball", play.drag_ball)
         && flag("audio.music_voice_overlay", play.music_voice_overlay)
+        && flag("audio.skip_perfect_jingle", play.skip_perfect_jingle)
         && flag("video.smoothing", play.smoothing)
         && flag("video.borderless", play.borderless);
 }

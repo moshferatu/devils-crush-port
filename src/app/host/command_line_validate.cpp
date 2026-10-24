@@ -134,6 +134,8 @@ namespace devils_crush::app::host {
         if (!found.empty()) options.rom_path = std::move(found);
     }
     options.cabinet = overrides.cabinet.value_or(play_selected && play.cabinet);
+    options.skip_perfect_jingle = overrides.skip_perfect_jingle.value_or(
+        play_selected && play.skip_perfect_jingle);
     options.music_voice_overlay = overrides.music_overlay.value_or(
         host_selected && !options.emulated_psg
         && (!play_selected || play.music_voice_overlay));
