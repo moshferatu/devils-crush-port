@@ -12,7 +12,7 @@ and starts the game, then comes back when the game closes.
 | Tab | |
 | --- | --- |
 | Game | The ROM, and cabinet or desktop mode |
-| Video | Smoothing, and for the cabinet: the playfield rotation, and which monitor each window is on and whether it is fullscreen |
+| Video | Smoothing, borderless windows, stretching the playfield, and for the cabinet: the playfield rotation, and which monitor each window is on and whether it is fullscreen |
 | Audio | The music voice overlay, and skipping the perfect bonus stage's cut-off jingle |
 | Controls | The keys (or controller buttons, d-pads and triggers) for each PC Engine pad input, and the window hotkeys |
 | Cabinet | The nudge board and nudge strength, and the analog plunger |
@@ -48,7 +48,7 @@ devils-crush.exe --rom "D:\path\to\Devil's Crush.pce"
 With no options the game plays as `devils-crush.ini` says, which is
 what the launcher edits: `game.rom`, `game.cabinet`, `game.bonus_stage`,
 `game.drag_ball`, `audio.music_voice_overlay`, `audio.skip_perfect_jingle`,
-`video.smoothing`, `video.borderless` and `input.nudge_multiplier`. An option on the command
+`video.smoothing`, `video.borderless`, `video.stretch` and `input.nudge_multiplier`. An option on the command
 line beats the file for that run, and a file without them plays with the
 defaults below.
 
@@ -56,6 +56,13 @@ defaults below.
 and border off every window that is not fullscreen, for recording the
 desktop. A window without one cannot be dragged: place the windows with it
 off, or move one with the next-monitor key; each opens where it was left.
+
+`video.stretch=1` (Stretch Playfield in the launcher) stretches the table to
+fill its whole window or screen instead of keeping the picture's proportions,
+so it is distorted to the window's shape. The bonus stages keep their
+proportions but grow to fill the window's width (on the cabinet, rather than
+only the table's width), as far as its height allows. The title, attract and
+other screens, and the DMD and backglass windows, are unchanged.
 
 Music voice overlay is also enabled by default during play. Add
 `--no-music-voice-overlay` to disable it. The existing `--cabinet` and

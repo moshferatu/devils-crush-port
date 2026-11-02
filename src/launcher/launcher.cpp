@@ -212,7 +212,7 @@ enum Kind { K_HEAD, K_CHOICE, K_RANGE, K_PATH, K_TEXT, K_NUMBER, K_KEYS };
 
 enum Setting {
     S_ROM, S_CABINET, S_BONUS_STAGE, S_DRAG_BALL,
-    S_SMOOTHING, S_BORDERLESS, S_ROTATION, S_FULLSCREEN_PLAYFIELD, S_FULLSCREEN_DMD, S_FULLSCREEN_BACKGLASS,
+    S_SMOOTHING, S_BORDERLESS, S_STRETCH, S_ROTATION, S_FULLSCREEN_PLAYFIELD, S_FULLSCREEN_DMD, S_FULLSCREEN_BACKGLASS,
     S_MONITOR_PLAYFIELD, S_MONITOR_DMD, S_MONITOR_BACKGLASS,
     S_OVERLAY, S_SKIP_JINGLE,
     S_NUDGE_STRENGTH, S_NUDGE_ENABLED, S_NUDGE_DEVICE, S_NUDGE_X, S_NUDGE_Y, S_NUDGE_THRESHOLD,
@@ -285,6 +285,8 @@ void build_rows()
         "Whether to enable smoothing for the game's visuals on higher refresh rates.");
     add_choice(TAB_VIDEO, S_BORDERLESS, "Borderless Windows", on_off, 2,
         "Whether to hide the title bar and border of windows that aren't fullscreen.");
+    add_choice(TAB_VIDEO, S_STRETCH, "Stretch Playfield", on_off, 2,
+        "Whether to stretch the table to fill its whole window or screen, distorting its proportions.");
     static const char cabinet_only[] =
         "For the cabinet's windows; a desktop window ignores it.";
     static const char monitor_help[] =
@@ -473,6 +475,7 @@ int setting_get(DisplayConfig& c, int id)
     case S_DRAG_BALL: return c.play.drag_ball;
     case S_SMOOTHING: return c.play.smoothing;
     case S_BORDERLESS: return c.play.borderless;
+    case S_STRETCH: return c.play.stretch;
     case S_ROTATION: return c.playfield_rotation_degrees;
     case S_FULLSCREEN_PLAYFIELD:
     case S_FULLSCREEN_DMD:
@@ -508,6 +511,7 @@ void setting_set(DisplayConfig& c, int id, int v)
     case S_DRAG_BALL: c.play.drag_ball = v != 0; break;
     case S_SMOOTHING: c.play.smoothing = v != 0; break;
     case S_BORDERLESS: c.play.borderless = v != 0; break;
+    case S_STRETCH: c.play.stretch = v != 0; break;
     case S_ROTATION: c.playfield_rotation_degrees = v; break;
     case S_FULLSCREEN_PLAYFIELD:
     case S_FULLSCREEN_DMD:

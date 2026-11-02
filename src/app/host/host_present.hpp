@@ -13,6 +13,11 @@ struct StageTexture {
     int height = 0;
 };
 
+// How `present_frame` sizes the picture: as usual, filling the whole window
+// whatever its proportions, or keeping its proportions but as wide as the
+// window allows rather than only as wide as the cabinet's table.
+enum class Stretch { none, fill, width };
+
 // Where `present_frame` last put the source picture in its window, in render
 // output pixels, and how far it was turned.
 struct PresentedPicture {
@@ -43,6 +48,7 @@ void destroy_stage(StageTexture& stage);
     const float motion_alpha = 1.0F,
     const FrameArtworkPresenter* artwork = nullptr,
     const int rotation_degrees = 0,
-    PresentedPicture* const presented = nullptr);
+    PresentedPicture* const presented = nullptr,
+    const Stretch stretch = Stretch::none);
 
 } // namespace devils_crush::app::host

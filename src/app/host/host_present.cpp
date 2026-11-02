@@ -94,7 +94,8 @@ void destroy_stage(StageTexture& stage)
     const float motion_alpha,
     const FrameArtworkPresenter* artwork,
     const int rotation_degrees,
-    PresentedPicture* const presented)
+    PresentedPicture* const presented,
+    const Stretch stretch)
 {
     int output_width = 0;
     int output_height = 0;
@@ -138,14 +139,18 @@ void destroy_stage(StageTexture& stage)
     const bool inset_fits = inset_width > 0 && inset_height > 0;
     const auto inset = inset_fits ? margin : 0;
 
+    const int box_width = inset_fits ? inset_width : output_width;
+    const int box_height = inset_fits ? inset_height : output_height;
+    // Filling asks for the box's own proportions, so the picture fills it.
+    const bool fill = stretch == Stretch::fill;
     auto layout = devils_crush::render::calculate_scale_layout(
-        inset_fits ? inset_width : output_width,
-        inset_fits ? inset_height : output_height,
+        box_width,
+        box_height,
         source.width,
         source.height,
-        aspect_numerator,
-        aspect_denominator);
-    if (bottom_table_width) {
+        fill ? static_cast<std::uint32_t>(box_width) : aspect_numerator,
+        fill ? static_cast<std::uint32_t>(box_height) : aspect_denominator);
+    if (bottom_table_width && stretch == Stretch::none) {
         const auto table_layout = devils_crush::render::calculate_scale_layout(
             output_width, output_height, source.width, source.height,
             devils_crush::cabinet::kTableAspectNumerator,
@@ -154,6 +159,10 @@ void destroy_stage(StageTexture& stage)
             table_layout.destination.width, output_height,
             source.width, source.height, aspect_numerator, aspect_denominator);
         layout.destination.x = (output_width - layout.destination.width) / 2;
+        layout.destination.y = output_height - layout.destination.height;
+    }
+    if (bottom_table_width && stretch == Stretch::width) {
+        // As wide as the window allows, still at the table's foot.
         layout.destination.y = output_height - layout.destination.height;
     }
     if (motion != nullptr) {

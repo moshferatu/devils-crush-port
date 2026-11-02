@@ -264,6 +264,10 @@ struct PlaySettings {
     // or border, so they cannot be dragged; each still opens where it was
     // left.
     bool borderless = false;
+    // `video.stretch`: the table fills its whole window or screen, whatever
+    // its shape, and a bonus stage keeps its proportions but grows to fill
+    // the width; other screens are unchanged.
+    bool stretch = false;
 
     [[nodiscard]] bool operator==(const PlaySettings&) const = default;
 };

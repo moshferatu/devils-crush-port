@@ -608,7 +608,10 @@ void HostSession::present_playfield(const bool smooth_table)
             motion_alpha,
             blend_frame ? &frame_artwork : nullptr,
             cabinet_config.playfield_rotation_degrees,
-            &playfield_picture);
+            &playfield_picture,
+            !cabinet_config.play.stretch ? Stretch::none
+                : table_view ? Stretch::fill
+                : bonus_view ? Stretch::width : Stretch::none);
         if (host_ok && (table_view || room_pieces || blend_frame)) {
             presentation_sample.observe(emulated_frames,
                 (interpolate || room_pieces || blend_frame) && motion_alpha < 1.0F,
